@@ -16,6 +16,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.lazy.LazyColumn
@@ -308,7 +309,7 @@ fun ScannerScreen() {
                 modifier = Modifier
                     .padding(bottom = 24.dp)
                     .size(96.dp),
-                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = if (isSystemInDarkTheme()) 0.18f else 0.08f)
             )
 
             Button(

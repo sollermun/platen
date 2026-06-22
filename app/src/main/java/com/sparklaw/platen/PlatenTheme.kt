@@ -10,7 +10,7 @@ import androidx.compose.ui.graphics.Color
 private val Navy          = Color(0xFF0D3B5F)
 private val NavyDark      = Color(0xFF082940)
 private val NavyContainer = Color(0xFF1C5C8F)
-private val NavyLight     = Color(0xFF4A90C4)
+private val NavyLight     = Color(0xFF6DB8E8)
 private val NavyPale      = Color(0xFFCDE4F5)
 
 private val SecondaryBlue          = Color(0xFF2E6DA4)
@@ -56,7 +56,7 @@ private val LightColorScheme = lightColorScheme(
 
 private val DarkColorScheme = darkColorScheme(
     primary                = NavyLight,
-    onPrimary              = Color(0xFF082940),
+    onPrimary              = Color.White,
     primaryContainer       = NavyDark,
     onPrimaryContainer     = NavyPale,
     secondary              = Color(0xFF90C4E8),
@@ -73,7 +73,7 @@ private val DarkColorScheme = darkColorScheme(
     onSurface              = OnSurfaceDark,
     surfaceVariant         = Color(0xFF1A2E3D),
     onSurfaceVariant       = Color(0xFF90B0C8),
-    outline                = OutlineDark,
+    outline                = Color(0xFF6898B8),
     error                  = Color(0xFFFFB4AB),
     onError                = Color(0xFF690005),
     errorContainer         = Color(0xFF93000A),
