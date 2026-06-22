@@ -14,7 +14,10 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Row
@@ -25,9 +28,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
@@ -45,7 +50,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -54,6 +61,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.documentfile.provider.DocumentFile
 import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
@@ -61,6 +69,9 @@ import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 private const val PREFS = "platen"
 private const val KEY_TREE = "output_tree_uri"
@@ -91,6 +102,7 @@ fun ScannerScreen() {
     val prefs = remember { context.getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
 
     var showSettings by remember { mutableStateOf(false) }
+    var showShareScans by remember { mutableStateOf(false) }
     var treeUri by remember {
         mutableStateOf(prefs.getString(KEY_TREE, null)?.let(Uri::parse))
     }
@@ -128,6 +140,29 @@ fun ScannerScreen() {
         prefs.edit().putBoolean(KEY_AUTO_DETECT, value).apply()
     }
 
+    val folderPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            context.contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            )
+            prefs.edit().putString(KEY_TREE, uri.toString()).apply()
+            treeUri = uri
+            status = "Output folder set. Ready to scan."
+        }
+    }
+
+    if (showShareScans) {
+        ShareScansScreen(
+            treeUri = treeUri,
+            context = context,
+            onBack = { showShareScans = false }
+        )
+        return
+    }
+
     if (showSettings) {
         SettingsScreen(
             grayscale = grayscale,
@@ -140,6 +175,8 @@ fun ScannerScreen() {
             onPageSizeChange = { setPageSize(it) },
             autoDetect = autoDetect,
             onAutoDetectChange = { setAutoDetect(it) },
+            onChangeFolderClick = { folderPicker.launch(treeUri) },
+            treeUri = treeUri,
             onBack = { showSettings = false }
         )
         return
@@ -154,20 +191,6 @@ fun ScannerScreen() {
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         context.startActivity(Intent.createChooser(send, "Share scan"))
-    }
-
-    val folderPicker = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocumentTree()
-    ) { uri: Uri? ->
-        if (uri != null) {
-            context.contentResolver.takePersistableUriPermission(
-                uri,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-            )
-            prefs.edit().putString(KEY_TREE, uri.toString()).apply()
-            treeUri = uri
-            status = "Output folder set. Ready to scan."
-        }
     }
 
     val scannerLauncher = rememberLauncherForActivityResult(
@@ -287,19 +310,11 @@ fun ScannerScreen() {
                 Text("Scan", style = MaterialTheme.typography.titleMedium)
             }
 
-            FilledTonalButton(
-                onClick = { folderPicker.launch(treeUri) },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(if (treeUri == null) "Choose output folder" else "Change output folder")
-            }
-
             OutlinedButton(
-                onClick = { shareLast() },
-                enabled = lastSaved != null,
+                onClick = { showShareScans = true },
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Share last scan")
+                Text("Share Scans")
             }
         }
     }
@@ -318,6 +333,8 @@ fun SettingsScreen(
     onPageSizeChange: (PageSize) -> Unit,
     autoDetect: Boolean,
     onAutoDetectChange: (Boolean) -> Unit,
+    onChangeFolderClick: () -> Unit,
+    treeUri: Uri?,
     onBack: () -> Unit
 ) {
     Scaffold(
@@ -339,6 +356,19 @@ fun SettingsScreen(
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp, vertical = 16.dp)
     ) {
+            Text("Output folder", style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.height(4.dp))
+            FilledTonalButton(
+                onClick = onChangeFolderClick,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(if (treeUri == null) "Choose output folder" else "Change output folder")
+            }
+
+            Spacer(Modifier.height(16.dp))
+            HorizontalDivider()
+            Spacer(Modifier.height(16.dp))
+
             Text("Mode", style = MaterialTheme.typography.labelLarge)
             Spacer(Modifier.height(4.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -397,6 +427,145 @@ fun SettingsScreen(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(checked = autoDetect, onCheckedChange = onAutoDetectChange)
                 Text("Auto-detect page size")
+            }
+        }
+    }
+}
+
+data class PdfEntry(val uri: Uri, val name: String, val dateLabel: String, val modified: Long)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ShareScansScreen(
+    treeUri: Uri?,
+    context: Context,
+    onBack: () -> Unit
+) {
+    val scope = rememberCoroutineScope()
+    var loading by remember { mutableStateOf(true) }
+    var entries by remember { mutableStateOf<List<PdfEntry>>(emptyList()) }
+    val checked = remember { mutableStateListOf<Uri>() }
+    val dateFmt = remember { SimpleDateFormat("MMM d, yyyy", Locale.getDefault()) }
+
+    LaunchedEffect(treeUri) {
+        loading = true
+        entries = emptyList()
+        checked.clear()
+        if (treeUri != null) {
+            val result = withContext(Dispatchers.IO) {
+                try {
+                    DocumentFile.fromTreeUri(context, treeUri)
+                        ?.listFiles()
+                        ?.filter { it.isFile && it.name?.endsWith(".pdf", ignoreCase = true) == true }
+                        ?.map { f ->
+                            val mod = f.lastModified()
+                            val label = if (mod > 0) dateFmt.format(Date(mod)) else ""
+                            PdfEntry(f.uri, f.name ?: f.uri.lastPathSegment ?: "scan.pdf", label, mod)
+                        }
+                        ?.sortedByDescending { it.modified }
+                        ?: emptyList()
+                } catch (_: Exception) { emptyList() }
+            }
+            entries = result
+        }
+        loading = false
+    }
+
+    fun shareSelected() {
+        val uris = ArrayList(checked)
+        if (uris.isEmpty()) return
+        val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+            type = "application/pdf"
+            putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+            clipData = ClipData.newRawUri("", uris.first()).also { cd ->
+                uris.drop(1).forEach { cd.addItem(ClipData.Item(it)) }
+            }
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(intent, "Share scans"))
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Share Scans") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    IconButton(
+                        onClick = { shareSelected() },
+                        enabled = checked.isNotEmpty()
+                    ) {
+                        Icon(Icons.Filled.Send, contentDescription = "Share selected")
+                    }
+                }
+            )
+        }
+    ) { innerPadding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+        ) {
+            when {
+                treeUri == null -> {
+                    Text(
+                        "No output folder set. Go to Settings → Change output folder.",
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .padding(32.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                loading -> {
+                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                }
+                entries.isEmpty() -> {
+                    Text(
+                        "No scans yet.",
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .padding(32.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                else -> {
+                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                        items(entries, key = { it.uri.toString() }) { entry ->
+                            val isChecked = entry.uri in checked
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    checked = isChecked,
+                                    onCheckedChange = { on ->
+                                        if (on) checked.add(entry.uri)
+                                        else checked.remove(entry.uri)
+                                    }
+                                )
+                                Column(modifier = Modifier.weight(1f).padding(start = 8.dp)) {
+                                    Text(entry.name, style = MaterialTheme.typography.bodyMedium)
+                                    if (entry.dateLabel.isNotEmpty()) {
+                                        Text(
+                                            entry.dateLabel,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                        }
+                    }
+                }
             }
         }
     }
