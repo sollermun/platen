@@ -1,12 +1,19 @@
 package com.sparklaw.platen
 
 import android.graphics.Bitmap
+import android.graphics.Matrix
+import kotlin.math.abs
+import kotlin.math.atan
+import kotlin.math.sqrt
 
 const val FILL_LUMA_MAX = 90
 const val MAX_EDGE_CROP_FRACTION = 0.25f
 const val MAX_FILL_FRACTION = 0.50f
 const val DETECT_CEILING = 6000
+const val MIN_DESKEW_DEG = 0.3f
+const val MAX_DESKEW_DEG = 10f
 private const val SEED_MARGIN = 3
+private const val MAX_EDGE_DISAGREE_DEG = 2.0
 
 private inline fun luma(pixel: Int): Int {
     val r = (pixel shr 16) and 0xFF
@@ -44,6 +51,72 @@ private fun borderFloodMask(pixels: IntArray, w: Int, h: Int, lumaMax: Int): Boo
         if (x < w - 1) { val n = idx + 1; if (!visited[n] && luma(pixels[n]) <= lumaMax) { visited[n] = true; stack.addLast(n) } }
     }
     return visited
+}
+
+/**
+ * Least-squares linear regression over a list of (x, y) Double pairs.
+ * Returns slope or null if degenerate (< 2 points or zero variance in x).
+ */
+private fun lsqSlope(pts: List<Pair<Double, Double>>): Double? {
+    if (pts.size < 2) return null
+    val n = pts.size.toDouble()
+    val mx = pts.sumOf { it.first } / n
+    val my = pts.sumOf { it.second } / n
+    var sxx = 0.0; var sxy = 0.0
+    for ((x, y) in pts) { sxx += (x - mx) * (x - mx); sxy += (x - mx) * (y - my) }
+    if (sxx < 1e-9) return null
+    return sxy / sxx
+}
+
+/**
+ * Estimates the skew angle (degrees) of the document by fitting lines through
+ * the fill/paper transitions on the top and bottom edges.
+ * Returns null if estimation fails or the two edges disagree badly.
+ */
+fun estimateSkewDeg(mask: BooleanArray, w: Int, h: Int): Double? {
+    val topPts = mutableListOf<Pair<Double, Double>>()
+    val botPts = mutableListOf<Pair<Double, Double>>()
+    for (col in 0 until w) {
+        var topTransition = -1
+        for (row in 0 until h) {
+            if (mask[row * w + col]) continue
+            topTransition = row; break
+        }
+        if (topTransition > 0) topPts.add(Pair(col.toDouble(), topTransition.toDouble()))
+
+        var botTransition = -1
+        for (row in h - 1 downTo 0) {
+            if (mask[row * w + col]) continue
+            botTransition = row; break
+        }
+        if (botTransition in 0 until h - 1) botPts.add(Pair(col.toDouble(), botTransition.toDouble()))
+    }
+    val topSlope = lsqSlope(topPts) ?: return null
+    val botSlope = lsqSlope(botPts)
+    val topDeg = Math.toDegrees(atan(topSlope))
+    if (botSlope != null) {
+        val botDeg = Math.toDegrees(atan(botSlope))
+        if (abs(topDeg - botDeg) > MAX_EDGE_DISAGREE_DEG) return null
+    }
+    return topDeg
+}
+
+/**
+ * Deskews a full-resolution bitmap by rotating it by the negated skew angle.
+ * Skips rotation if estimation fails, or |angle| < MIN_DESKEW_DEG, or > MAX_DESKEW_DEG.
+ * The rotated bitmap is expanded to fit the full rotated content (no clipping).
+ */
+fun deskewBitmap(src: Bitmap): Bitmap {
+    val w = src.width
+    val h = src.height
+    val pixels = IntArray(w * h)
+    src.getPixels(pixels, 0, w, 0, 0, w, h)
+    val mask = borderFloodMask(pixels, w, h, FILL_LUMA_MAX)
+    val angle = estimateSkewDeg(mask, w, h) ?: return src
+    if (abs(angle) < MIN_DESKEW_DEG || abs(angle) > MAX_DESKEW_DEG) return src
+    val matrix = Matrix().apply { setRotate(-angle.toFloat(), w / 2f, h / 2f) }
+    val rotated = Bitmap.createBitmap(src, 0, 0, w, h, matrix, true)
+    return rotated
 }
 
 /**

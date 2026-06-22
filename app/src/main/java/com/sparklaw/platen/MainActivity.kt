@@ -193,7 +193,8 @@ fun ScannerScreen() {
                     val dpi = if (useHigh) 400f else 300f
                     val processed = pageUris.mapNotNull { uri ->
                         decodeFullRes(context, uri)?.let { full ->
-                            val cropped = detectAndCropPage(full)
+                            val straight = deskewBitmap(full)
+                            val cropped = detectAndCropPage(straight)
                             val whitened = whitenResidualFill(
                                 if (cropped.isMutable) cropped
                                 else cropped.copy(Bitmap.Config.ARGB_8888, true)
