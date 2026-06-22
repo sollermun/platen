@@ -28,14 +28,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
@@ -295,28 +298,38 @@ fun ScannerScreen() {
                 .fillMaxSize()
                 .padding(innerPadding)
                 .padding(horizontal = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            val folderCaption = when {
-                treeUri == null -> "No folder selected"
-                else -> "Saving to Scans"
-            }
-            Text(folderCaption, style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (status.isNotEmpty()) {
-                Text(status, style = MaterialTheme.typography.bodyMedium)
-            }
+            Spacer(Modifier.weight(1f))
 
-            Spacer(Modifier.height(8.dp))
+            Icon(
+                imageVector = Icons.Filled.DocumentScanner,
+                contentDescription = null,
+                modifier = Modifier
+                    .padding(bottom = 24.dp)
+                    .size(96.dp),
+                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+            )
 
             Button(
                 onClick = { startScan() },
                 enabled = treeUri != null,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(72.dp),
+                contentPadding = ButtonDefaults.ButtonWithIconContentPadding
             ) {
-                Text("Scan", style = MaterialTheme.typography.titleMedium)
+                Icon(
+                    Icons.Filled.DocumentScanner,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(ButtonDefaults.IconSize)
+                        .padding(end = ButtonDefaults.IconSpacing)
+                )
+                Text("Scan", style = MaterialTheme.typography.headlineSmall)
             }
+
+            Spacer(Modifier.height(16.dp))
 
             OutlinedButton(
                 onClick = { showShareScans = true },
@@ -324,6 +337,28 @@ fun ScannerScreen() {
             ) {
                 Text("Manage Scans")
             }
+
+            Spacer(Modifier.weight(1.5f))
+
+            if (status.isNotEmpty()) {
+                Text(
+                    status,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+            }
+
+            val folderCaption = when {
+                treeUri == null -> "Go to Settings to choose an output folder."
+                else -> "Saving to Scans"
+            }
+            Text(
+                folderCaption,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
         }
     }
 }
