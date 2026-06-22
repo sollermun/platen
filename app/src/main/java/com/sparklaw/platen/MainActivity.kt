@@ -28,10 +28,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
@@ -314,7 +316,7 @@ fun ScannerScreen() {
                 onClick = { showShareScans = true },
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Share Scans")
+                Text("Manage Scans")
             }
         }
     }
@@ -446,13 +448,12 @@ fun ShareScansScreen(
     var entries by remember { mutableStateOf<List<PdfEntry>>(emptyList()) }
     val checked = remember { mutableStateListOf<Uri>() }
     val dateFmt = remember { SimpleDateFormat("MMM d, yyyy", Locale.getDefault()) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
 
-    LaunchedEffect(treeUri) {
+    suspend fun loadEntries() {
         loading = true
-        entries = emptyList()
-        checked.clear()
-        if (treeUri != null) {
-            val result = withContext(Dispatchers.IO) {
+        val result = if (treeUri != null) {
+            withContext(Dispatchers.IO) {
                 try {
                     DocumentFile.fromTreeUri(context, treeUri)
                         ?.listFiles()
@@ -466,9 +467,15 @@ fun ShareScansScreen(
                         ?: emptyList()
                 } catch (_: Exception) { emptyList() }
             }
-            entries = result
-        }
+        } else emptyList()
+        entries = result
         loading = false
+    }
+
+    LaunchedEffect(treeUri) {
+        entries = emptyList()
+        checked.clear()
+        loadEntries()
     }
 
     fun shareSelected() {
@@ -485,10 +492,39 @@ fun ShareScansScreen(
         context.startActivity(Intent.createChooser(intent, "Share scans"))
     }
 
+    if (showDeleteDialog) {
+        val count = checked.size
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = { Text("Delete $count ${if (count == 1) "scan" else "scans"}?") },
+            text = { Text("This can't be undone.") },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    showDeleteDialog = false
+                    val toDelete = ArrayList(checked)
+                    scope.launch {
+                        withContext(Dispatchers.IO) {
+                            toDelete.forEach { uri ->
+                                DocumentFile.fromSingleUri(context, uri)?.delete()
+                            }
+                        }
+                        checked.clear()
+                        loadEntries()
+                    }
+                }) { Text("Delete") }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { showDeleteDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Share Scans") },
+                title = { Text("Manage Scans") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -500,6 +536,12 @@ fun ShareScansScreen(
                         enabled = checked.isNotEmpty()
                     ) {
                         Icon(Icons.Filled.Send, contentDescription = "Share selected")
+                    }
+                    IconButton(
+                        onClick = { showDeleteDialog = true },
+                        enabled = checked.isNotEmpty()
+                    ) {
+                        Icon(Icons.Filled.Delete, contentDescription = "Delete selected")
                     }
                 }
             )
