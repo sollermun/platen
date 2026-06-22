@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.IntentSenderRequest
@@ -141,6 +142,9 @@ fun ScannerScreen() {
         autoDetect = value
         prefs.edit().putBoolean(KEY_AUTO_DETECT, value).apply()
     }
+
+    BackHandler(enabled = showSettings) { showSettings = false }
+    BackHandler(enabled = showShareScans) { showShareScans = false }
 
     val folderPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
