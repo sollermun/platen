@@ -21,7 +21,7 @@ import kotlin.math.min
 private const val TAG = "PdfExporter"
 
 private const val RECEIPT_RATIO_THRESHOLD = 0.5f
-private const val PAGE_MARGIN_PT = 18f
+private const val PAGE_MARGIN_PT = 0f
 
 private const val LETTER_W_PT = 612f
 private const val LETTER_H_PT = 792f
@@ -138,9 +138,7 @@ object PdfExporter {
             PageSize.FIT    -> return DrawRect(imgWPt, imgHPt, 0f, 0f, imgWPt, imgHPt)
         }
 
-        val availW = fixedW - 2 * PAGE_MARGIN_PT
-        val availH = fixedH - 2 * PAGE_MARGIN_PT
-        val scale = min(availW / imgWPt, availH / imgHPt)
+        val scale = min(fixedW / imgWPt, fixedH / imgHPt)
         val drawnW = imgWPt * scale
         val drawnH = imgHPt * scale
         val offsetX = (fixedW - drawnW) / 2f
