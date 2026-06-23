@@ -96,10 +96,16 @@ object PdfExporter {
                     }
                 }
             }
-            val dir = DocumentFile.fromTreeUri(context, treeUri) ?: return null
+val dir = DocumentFile.fromTreeUri(context, treeUri)
+                ?: throw java.io.IOException("Output folder is unavailable.")
+            if (!dir.canWrite())
+                throw SecurityException("No write access to the output folder.")
             val stamp = SimpleDateFormat("yyyy.MM.dd.HH.mm.ss", Locale.US).format(Date())
-            val file = dir.createFile("application/pdf", "$stamp scan.pdf") ?: return null
-            context.contentResolver.openOutputStream(file.uri)?.use { os -> doc.save(os) } ?: return null
+            val file = dir.createFile("application/pdf", "$stamp scan.pdf")
+                ?: throw java.io.IOException("Could not create the file in the output folder.")
+            val os = context.contentResolver.openOutputStream(file.uri)
+                ?: throw java.io.IOException("Could not open the output file for writing.")
+            os.use { doc.save(it) }
             return file.uri
         } finally {
             doc.close()
