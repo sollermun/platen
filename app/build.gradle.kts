@@ -1,3 +1,12 @@
+import java.util.Properties
+import java.io.FileInputStream
+
+// Load signing secrets from a gitignored keystore.properties (never committed).
+val keystorePropsFile = rootProject.file("keystore.properties")
+val keystoreProps = Properties().apply {
+    if (keystorePropsFile.exists()) load(FileInputStream(keystorePropsFile))
+}
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -13,12 +22,32 @@ android {
         minSdk = 24            // ML Kit doc scanner needs 21+; 24 keeps things simple
         targetSdk = 35
         versionCode = 1
-        versionName = "0.1"
+        versionName = "1.0.0"  // bump versionCode on EVERY Play upload; bump versionName per release
+    }
+
+    signingConfigs {
+        create("release") {
+            if (keystorePropsFile.exists()) {
+                storeFile = file(keystoreProps["storeFile"] as String)
+                storePassword = keystoreProps["storePassword"] as String
+                keyAlias = keystoreProps["keyAlias"] as String
+                keyPassword = keystoreProps["keyPassword"] as String
+            }
+        }
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+            isDebuggable = false
+            // Attach signing only when keystore.properties is present locally.
+            signingConfig = if (keystorePropsFile.exists())
+                signingConfigs.getByName("release") else null
         }
     }
 
@@ -27,7 +56,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
-
     buildFeatures { compose = true }
 }
 
@@ -39,18 +67,12 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.documentfile:documentfile:1.0.1")
-
     // ML Kit document scanner: capture UI, edge detection, deskew, cleanup.
-    // No camera permission required (uses Google Play services' camera).
     implementation("com.google.android.gms:play-services-mlkit-document-scanner:16.0.0-beta1")
-
-    // PdfBox-Android: gives us CCITTFactory.createFromImage(doc, Bitmap)
-    // for true 1-bit Group 4 (fax) compressed PDF pages.
+    // PdfBox-Android for PDF assembly.
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
-
-    // ML Kit text recognition: bundled Latin model, on-device, no model download needed.
+    // ML Kit text recognition: bundled Latin model, on-device.
     implementation("com.google.mlkit:text-recognition:16.0.1")
-
     // Coroutines bridge for ML Kit's Task<T> API.
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
 }
