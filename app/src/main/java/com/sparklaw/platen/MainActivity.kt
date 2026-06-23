@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.Snackbar
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -123,6 +124,7 @@ fun ScannerScreen() {
     var lastSaved by remember { mutableStateOf<Uri?>(null) }
     var status by remember { mutableStateOf("") }
     val snackbarHostState = remember { SnackbarHostState() }
+    var snackbarIsError by remember { mutableStateOf(false) }
 
     fun setGrayscale(value: Boolean) {
         grayscale = value
@@ -267,6 +269,7 @@ fun ScannerScreen() {
                 }
             } catch (e: Throwable) {
                 android.util.Log.e("Platen", "Scan export failed", e)
+                snackbarIsError = true
                 snackbarHostState.showSnackbar(
                     when {
                         e is java.io.IOException &&
@@ -284,6 +287,7 @@ fun ScannerScreen() {
             }
             status = ""
             if (out != null) {
+                snackbarIsError = false
                 lastSaved = out
                 val filename = out.lastPathSegment?.substringAfterLast('/') ?: "scan"
                 val result = snackbarHostState.showSnackbar(
@@ -331,7 +335,25 @@ fun ScannerScreen() {
                 }
             )
         },
-        snackbarHost = { SnackbarHost(snackbarHostState) }
+        snackbarHost = {
+            SnackbarHost(snackbarHostState) { data ->
+                Snackbar(
+                    snackbarData = data,
+                    containerColor = if (snackbarIsError)
+                        MaterialTheme.colorScheme.errorContainer
+                    else
+                        MaterialTheme.colorScheme.inverseSurface,
+                    contentColor = if (snackbarIsError)
+                        MaterialTheme.colorScheme.onErrorContainer
+                    else
+                        MaterialTheme.colorScheme.inverseOnSurface,
+                    actionColor = if (snackbarIsError)
+                        MaterialTheme.colorScheme.onErrorContainer
+                    else
+                        MaterialTheme.colorScheme.inversePrimary
+                )
+            }
+        }
     ) { innerPadding ->
         Column(
             modifier = Modifier
