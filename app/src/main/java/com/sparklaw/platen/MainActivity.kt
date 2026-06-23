@@ -149,6 +149,15 @@ fun ScannerScreen() {
         prefs.edit().putBoolean(KEY_AUTO_DETECT, value).apply()
     }
 
+    fun folderUsable(): Boolean {
+        val uri = treeUri ?: return false
+        return try {
+            DocumentFile.fromTreeUri(context, uri)?.canWrite() == true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     BackHandler(enabled = showSettings) { showSettings = false }
     BackHandler(enabled = showShareScans) { showShareScans = false }
 
@@ -202,7 +211,11 @@ fun ScannerScreen() {
             clipData = ClipData.newRawUri("", uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        context.startActivity(Intent.createChooser(send, "Share scan"))
+        try {
+            context.startActivity(Intent.createChooser(send, "Share scan"))
+        } catch (e: Exception) {
+            Toast.makeText(context, "No app available to share this file.", Toast.LENGTH_LONG).show()
+        }
     }
 
     val scannerLauncher = rememberLauncherForActivityResult(
@@ -211,8 +224,16 @@ fun ScannerScreen() {
         val data = GmsDocumentScanningResult.fromActivityResultIntent(result.data)
         val pageUris = data?.pages?.map { it.imageUri } ?: emptyList()
         val dest = treeUri
-        if (pageUris.isEmpty() || dest == null) {
-            status = "Scan cancelled or no folder set."
+        if (pageUris.isEmpty()) {
+            status = "Scan cancelled."
+            return@rememberLauncherForActivityResult
+        }
+        if (dest == null) {
+            status = "No output folder set. Choose one in Settings."
+            return@rememberLauncherForActivityResult
+        }
+        if (!folderUsable()) {
+            status = "Output folder access was lost. Re-select it in Settings."
             return@rememberLauncherForActivityResult
         }
         status = "Processing…"
@@ -245,7 +266,20 @@ fun ScannerScreen() {
                     PdfExporter.export(context, dest, processed, words, dpi, usePageSize, useAutoDetect)
                 }
             } catch (e: Throwable) {
-                status = "Error: ${e.message}"
+                android.util.Log.e("Platen", "Scan export failed", e)
+                snackbarHostState.showSnackbar(
+                    when {
+                        e is java.io.IOException &&
+                            (e.message?.contains("space", true) == true ||
+                             e.message?.contains("ENOSPC", true) == true) ->
+                            "Not enough storage to save the scan."
+                        e is SecurityException ->
+                            "Output folder access was lost. Re-select it in Settings."
+                        e is java.io.IOException ->
+                            "Couldn't save — check your output folder in Settings."
+                        else -> "Couldn't save the scan. Please try again."
+                    }
+                )
                 null
             }
             status = ""
@@ -276,7 +310,12 @@ fun ScannerScreen() {
                 scannerLauncher.launch(IntentSenderRequest.Builder(intentSender).build())
             }
             .addOnFailureListener { e ->
-                Toast.makeText(context, "Scanner error: ${e.message}", Toast.LENGTH_LONG).show()
+                android.util.Log.e("Platen", "Scanner launch failed", e)
+                Toast.makeText(
+                    context,
+                    "Document scanner unavailable. Make sure Google Play Services is up to date.",
+                    Toast.LENGTH_LONG
+                ).show()
             }
     }
 
