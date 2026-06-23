@@ -13,3 +13,8 @@ captures/
 *.zip
 *:Zone.Identifier
 /band-*.png
+
+# Signing — never commit
+keystore.properties
+*.jks
+*.keystore
