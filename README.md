@@ -7,6 +7,20 @@ and saves compact black-and-white or grayscale PDFs (optionally with an
 on-device searchable-text layer) to a folder **you** choose. Everything happens
 on the device — no account, no servers, no analytics, no data collection.
 
+## Install
+
+**Google Play** — coming soon (`com.sparklaw.platen`)
+
+**APK (sideload):** Download `app-release.apk` from
+[Releases](https://github.com/sollermun/platen/releases). Enable *Install
+unknown apps* for your file manager, then open the APK.
+
+> ⚠️ The Play Store version and the GitHub APK are signed with different keys
+> (Google re-signs apps distributed via Play). You cannot upgrade from one
+> install path to the other without uninstalling first.
+
+**Requirements:** Android 7.0 (API 24) or higher.
+
 ## Features
 
 - Document/receipt capture with automatic edge detection, deskew, and perspective
