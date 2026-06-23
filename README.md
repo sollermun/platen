@@ -39,7 +39,7 @@ unknown apps* for your file manager, then open the APK.
 Platen does not collect, transmit, or sell any data. Scans are processed on the
 device and written only to the folder you select. The `INTERNET` permission is
 present transitively via Google ML Kit; it is not used by this app to send your
-documents or any personal data anywhere. See the privacy policy for details.
+documents or any personal data anywhere. See the [privacy policy](https://sparklawfirm.com/platen-privacy-policy.html) for details.
 
 ## Build
 
