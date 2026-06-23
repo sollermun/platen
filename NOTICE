@@ -1,0 +1,50 @@
+Platen
+Copyright 2026 Law Office of Samuel H. Park, APC
+
+This product includes software developed by third parties, listed below.
+Each component is the property of its respective owners and is used under
+the terms of its own license.
+
+--------------------------------------------------------------------------
+PdfBox-Android
+  Copyright The Apache Software Foundation; Tom Roush and contributors
+  License: Apache License 2.0
+  https://github.com/TomRoush/PdfBox-Android
+
+Apache PDFBox (upstream)
+  Copyright The Apache Software Foundation
+  License: Apache License 2.0
+  https://pdfbox.apache.org/
+
+AndroidX libraries (androidx.core, androidx.activity, androidx.compose,
+androidx.documentfile, and related Jetpack components)
+  Copyright The Android Open Source Project
+  License: Apache License 2.0
+  https://developer.android.com/jetpack/androidx
+
+Jetpack Compose / Material 3
+  Copyright The Android Open Source Project
+  License: Apache License 2.0
+
+Kotlin Standard Library and kotlinx.coroutines
+  Copyright JetBrains s.r.o. and Kotlin Programming Language contributors
+  License: Apache License 2.0
+  https://github.com/JetBrains/kotlin
+  https://github.com/Kotlin/kotlinx.coroutines
+
+Google ML Kit (Document Scanner; Text Recognition)
+  Copyright Google LLC
+  Used as a dependency under the Google APIs Terms of Service and the
+  ML Kit terms. ML Kit is proprietary to Google and is not covered by
+  this project's Apache-2.0 license.
+  https://developers.google.com/ml-kit
+  https://developers.google.com/ml-kit/terms
+
+Google Play services
+  Copyright Google LLC
+  Used under the Google APIs Terms of Service.
+  https://developers.google.com/terms
+--------------------------------------------------------------------------
+
+Apache License 2.0 components are distributed under the terms available at:
+  http://www.apache.org/licenses/LICENSE-2.0

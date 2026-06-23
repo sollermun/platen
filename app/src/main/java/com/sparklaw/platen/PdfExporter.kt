@@ -1,0 +1,171 @@
+package com.sparklaw.platen
+
+import android.content.Context
+import android.graphics.Bitmap
+import android.net.Uri
+import android.util.Log
+import androidx.documentfile.provider.DocumentFile
+import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.pdmodel.PDPage
+import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
+import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
+import com.tom_roush.pdfbox.pdmodel.font.PDType1Font
+import com.tom_roush.pdfbox.pdmodel.graphics.image.LosslessFactory
+import com.tom_roush.pdfbox.pdmodel.graphics.state.RenderingMode
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import kotlin.math.abs
+import kotlin.math.min
+
+private const val TAG = "PdfExporter"
+
+private const val RECEIPT_RATIO_THRESHOLD = 0.5f
+private const val PAGE_MARGIN_PT = 0f
+
+private const val LETTER_W_PT = 612f
+private const val LETTER_H_PT = 792f
+private const val LEGAL_W_PT  = 612f
+private const val LEGAL_H_PT  = 1008f
+
+private val LETTER_PORTRAIT_RATIO = LETTER_W_PT / LETTER_H_PT
+private val LEGAL_PORTRAIT_RATIO  = LEGAL_W_PT  / LEGAL_H_PT
+
+enum class PageSize { FIT, LETTER, LEGAL }
+
+private data class DrawRect(
+    val pageW: Float, val pageH: Float,
+    val imgX: Float, val imgY: Float,
+    val imgW: Float, val imgH: Float
+)
+
+object PdfExporter {
+    fun export(
+        context: Context,
+        treeUri: Uri,
+        pages: List<Bitmap>,
+        ocrWords: List<List<OcrWord>>? = null,
+        dpi: Float = 300f,
+        pageSize: PageSize = PageSize.FIT,
+        autoDetect: Boolean = false
+    ): Uri? {
+        if (pages.isEmpty()) return null
+        val doc = PDDocument()
+        try {
+            pages.forEachIndexed { idx, bmp ->
+                // LosslessFactory accepts a normal ARGB_8888 bitmap and Flate-compresses it.
+                // Works for both the bitonal and grayscale outputs from Binarizer.
+                val img = LosslessFactory.createFromImage(doc, bmp)
+                val dr = computeDrawRect(bmp, dpi, pageSize, autoDetect)
+                val page = PDPage(PDRectangle(dr.pageW, dr.pageH))
+                doc.addPage(page)
+
+                PDPageContentStream(doc, page).use { cs ->
+                    cs.drawImage(img, dr.imgX, dr.imgY, dr.imgW, dr.imgH)
+                }
+
+                val words = ocrWords?.getOrNull(idx)
+                if (!words.isNullOrEmpty()) {
+                    val scaleX = dr.imgW / bmp.width
+                    val scaleY = dr.imgH / bmp.height
+                    PDPageContentStream(
+                        doc, page,
+                        PDPageContentStream.AppendMode.APPEND,
+                        true
+                    ).use { cs ->
+                        cs.beginText()
+                        cs.setRenderingMode(RenderingMode.NEITHER)
+                        val font = PDType1Font.HELVETICA
+                        for (word in words) {
+                            val sanitized = sanitizeForWinAnsi(word.text)
+                            if (sanitized.isEmpty()) continue
+                            val boxH = (word.box.bottom - word.box.top).coerceAtLeast(1)
+                            val fontSize = (boxH * scaleY).coerceAtLeast(1f)
+                            val x = dr.imgX + word.box.left * scaleX
+                            val y = dr.imgY + (dr.imgH - word.box.bottom * scaleY)
+                            try {
+                                cs.setFont(font, fontSize)
+                                cs.newLineAtOffset(x, y)
+                                cs.showText(sanitized)
+                                cs.newLineAtOffset(-x, -y)
+                            } catch (e: Exception) {
+                                Log.w(TAG, "Skipped line '${word.text}': ${e.message}")
+                            }
+                        }
+                        cs.endText()
+                    }
+                }
+            }
+val dir = DocumentFile.fromTreeUri(context, treeUri)
+                ?: throw java.io.IOException("Output folder is unavailable.")
+            if (!dir.canWrite())
+                throw SecurityException("No write access to the output folder.")
+            val stamp = SimpleDateFormat("yyyy.MM.dd.HH.mm.ss", Locale.US).format(Date())
+            val file = dir.createFile("application/pdf", "$stamp scan.pdf")
+                ?: throw java.io.IOException("Could not create the file in the output folder.")
+            val os = context.contentResolver.openOutputStream(file.uri)
+                ?: throw java.io.IOException("Could not open the output file for writing.")
+            os.use { doc.save(it) }
+            return file.uri
+        } finally {
+            doc.close()
+        }
+    }
+
+    private fun computeDrawRect(bmp: Bitmap, dpi: Float, pageSize: PageSize, autoDetect: Boolean): DrawRect {
+        val imgWPt = bmp.width / dpi * 72f
+        val imgHPt = bmp.height / dpi * 72f
+
+        val shortSide = min(bmp.width, bmp.height).toFloat()
+        val longSide  = maxOf(bmp.width, bmp.height).toFloat()
+        val ratio = shortSide / longSide
+
+        if (ratio < RECEIPT_RATIO_THRESHOLD) {
+            return DrawRect(imgWPt, imgHPt, 0f, 0f, imgWPt, imgHPt)
+        }
+
+        val resolvedSize: PageSize = when {
+            autoDetect -> {
+                val diffLetter = abs(ratio - LETTER_PORTRAIT_RATIO)
+                val diffLegal  = abs(ratio - LEGAL_PORTRAIT_RATIO)
+                if (diffLetter <= diffLegal) PageSize.LETTER else PageSize.LEGAL
+            }
+            else -> pageSize
+        }
+
+        if (resolvedSize == PageSize.FIT) {
+            return DrawRect(imgWPt, imgHPt, 0f, 0f, imgWPt, imgHPt)
+        }
+
+        val landscape = bmp.width > bmp.height
+        val (fixedW, fixedH) = when (resolvedSize) {
+            PageSize.LETTER -> if (landscape) Pair(LETTER_H_PT, LETTER_W_PT) else Pair(LETTER_W_PT, LETTER_H_PT)
+            PageSize.LEGAL  -> if (landscape) Pair(LEGAL_H_PT,  LEGAL_W_PT)  else Pair(LEGAL_W_PT,  LEGAL_H_PT)
+            PageSize.FIT    -> return DrawRect(imgWPt, imgHPt, 0f, 0f, imgWPt, imgHPt)
+        }
+
+        val scale = min(fixedW / imgWPt, fixedH / imgHPt)
+        val drawnW = imgWPt * scale
+        val drawnH = imgHPt * scale
+        val offsetX = (fixedW - drawnW) / 2f
+        val offsetY = (fixedH - drawnH) / 2f
+
+        return DrawRect(fixedW, fixedH, offsetX, offsetY, drawnW, drawnH)
+    }
+
+    private fun sanitizeForWinAnsi(text: String): String {
+        val sb = StringBuilder(text.length)
+        for (ch in text) {
+            val cp = ch.code
+            when {
+                cp in 0x20..0x7E -> sb.append(ch)
+                cp in 0xA0..0xFF -> sb.append(ch)
+                ch == '\u2019' || ch == '\u2018' -> sb.append('\'')
+                ch == '\u201C' || ch == '\u201D' -> sb.append('"')
+                ch == '\u2013' || ch == '\u2014' -> sb.append('-')
+                else -> { /* drop */ }
+            }
+        }
+        return sb.toString()
+    }
+}

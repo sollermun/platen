@@ -1,0 +1,24 @@
+*.iml
+.gradle/
+local.properties
+.idea/
+.DS_Store
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+*.pdf
+*.zip
+*:Zone.Identifier
+/band-*.png
+
+# Signing — never commit
+keystore.properties
+*.jks
+*.keystore
+
+# Internal working docs — not for public repo
+AGENTS.md
+BACKLOG.md
