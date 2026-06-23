@@ -175,6 +175,34 @@ floating height, for tidy uniform receipt columns without full-page waste.
 
 ## P3 — Exploratory
 
+### P3-0 — Overscan edge-trim — **deferred / low priority**
+
+Optional final step in the edge pipeline, inserted after deskew → crop → whiten
+→ full-page placement but **before** downsample: trim a small uniform inset
+(≈ 1.5 %, tunable constant `OVERSCAN_FRACTION`) off all four edges of the
+cleaned bitmap.
+
+**Rationale:** the deskew/crop chain correctly detects the outer border of
+bordered objects (e.g. envelopes), and the binarizer renders that border as a
+faint dashed/dotted rectangle in the output. A tiny uniform inset removes it
+without touching the document interior.
+
+**Why it is safe for documents/receipts:** their outer margin is blank white,
+so a 1.5 % inset removes only whitespace — no content is lost, and it cannot
+regress the well-tuned document/receipt case.
+
+**Deferred because:** envelopes are an edge case; current document and receipt
+output is correct. Revisit if envelope / bordered-object scanning becomes common.
+
+**Important constraint:** do **not** address this by raising the whiten luma
+threshold (`FILL_LUMA_MAX`) or widening the flood-fill seed margin — those
+modify the fill detection across the whole image and risk eating real content
+near edges. The correct fix is the targeted post-whiten inset only.
+
+**Done when:** `OVERSCAN_FRACTION` constant in `EdgeCrop.kt`; applied after
+`whitenResidualFill` and before `downsampleBitmap`; envelope output has no
+dashed border; document/receipt output is unchanged.
+
 ### P3-1 — Physical-size estimation spike
 Research-only: can real paper dimensions be estimated from Camera2 focus
 distance + intrinsics, or ARCore Depth, accurately enough to be useful?
