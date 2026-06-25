@@ -49,10 +49,9 @@ documents or any personal data anywhere. See the [privacy policy](https://sparkl
 
 ## Contributions and support
 
-This project is provided **as-is**, with no warranty and no support. It is
-published for transparency and reference. **Issues and pull requests are not
-being accepted** and may be left unanswered or closed. You are welcome to fork
-the project and adapt it under the terms of the license.
+Bug reports are welcome — please [open an issue](https://github.com/sollermun/platen/issues).
+
+Feature requests and pull requests are not accepted at this time. This is an intentionally minimal tool and the scope is fixed.
 
 ## License
 
