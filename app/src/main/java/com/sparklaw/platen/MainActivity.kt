@@ -11,18 +11,17 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.enableEdgeToEdge
+import androidx.lifecycle.lifecycleScope
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -30,39 +29,56 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.DocumentScanner
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.Button
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.Snackbar
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -82,17 +98,10 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private const val PREFS = "platen"
-private const val KEY_TREE = "output_tree_uri"
-private const val KEY_GRAYSCALE = "grayscale_mode"
-private const val KEY_OCR = "ocr_enabled"
-private const val KEY_HIGH_QUALITY = "high_quality"
-private const val KEY_PAGE_SIZE = "page_size"
-private const val KEY_AUTO_DETECT = "auto_detect_page_size"
-
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        lifecycleScope.launch { ProfileStore(applicationContext).initialize() }
         PDFBoxResourceLoader.init(applicationContext)
         enableEdgeToEdge()
         setContent {
@@ -105,102 +114,106 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScannerScreen() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val prefs = remember { context.getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
+    val profileStore = remember { ProfileStore(context.applicationContext) }
 
-    var showSettings by remember { mutableStateOf(false) }
-    var showShareScans by remember { mutableStateOf(false) }
-    var treeUri by remember {
-        mutableStateOf(prefs.getString(KEY_TREE, null)?.let(Uri::parse))
+    val profiles by profileStore.profiles.collectAsState(initial = emptyList())
+    val activeProfileId by profileStore.activeProfileId.collectAsState(initial = ProfileStore.DEFAULT_PROFILE.id)
+    val activeProfile = remember(profiles, activeProfileId) {
+        profiles.find { it.id == activeProfileId } ?: profiles.firstOrNull()
     }
-    var grayscale by remember { mutableStateOf(prefs.getBoolean(KEY_GRAYSCALE, false)) }
-    var ocrEnabled by remember { mutableStateOf(prefs.getBoolean(KEY_OCR, true)) }
-    var highQuality by remember { mutableStateOf(prefs.getBoolean(KEY_HIGH_QUALITY, false)) }
-    var pageSizeOrdinal by remember { mutableStateOf(prefs.getInt(KEY_PAGE_SIZE, PageSize.FIT.ordinal)) }
-    var autoDetect by remember { mutableStateOf(prefs.getBoolean(KEY_AUTO_DETECT, false)) }
+
+    var settingsProfileId by remember { mutableStateOf<String?>(null) }
+    var showProfileManager by remember { mutableStateOf(false) }
+    var showShareScans by remember { mutableStateOf(false) }
+    var showAbout by remember { mutableStateOf(false) }
+    var folderPickerProfileId by remember { mutableStateOf<String?>(null) }
     var lastSaved by remember { mutableStateOf<Uri?>(null) }
     var status by remember { mutableStateOf("") }
     val snackbarHostState = remember { SnackbarHostState() }
     var snackbarIsError by remember { mutableStateOf(false) }
 
-    fun setGrayscale(value: Boolean) {
-        grayscale = value
-        prefs.edit().putBoolean(KEY_GRAYSCALE, value).apply()
-    }
-
-    fun setOcrEnabled(value: Boolean) {
-        ocrEnabled = value
-        prefs.edit().putBoolean(KEY_OCR, value).apply()
-    }
-
-    fun setHighQuality(value: Boolean) {
-        highQuality = value
-        prefs.edit().putBoolean(KEY_HIGH_QUALITY, value).apply()
-    }
-
-    fun setPageSize(value: PageSize) {
-        pageSizeOrdinal = value.ordinal
-        prefs.edit().putInt(KEY_PAGE_SIZE, value.ordinal).apply()
-    }
-
-    fun setAutoDetect(value: Boolean) {
-        autoDetect = value
-        prefs.edit().putBoolean(KEY_AUTO_DETECT, value).apply()
-    }
-
-    fun folderUsable(): Boolean {
-        val uri = treeUri ?: return false
+    fun folderUsable(uri: Uri?): Boolean {
+        val u = uri ?: return false
         return try {
-            DocumentFile.fromTreeUri(context, uri)?.canWrite() == true
+            DocumentFile.fromTreeUri(context, u)?.canWrite() == true
         } catch (e: Exception) {
             false
         }
     }
 
-    BackHandler(enabled = showSettings) { showSettings = false }
+    BackHandler(enabled = settingsProfileId != null) { settingsProfileId = null }
+    BackHandler(enabled = showProfileManager) { showProfileManager = false }
     BackHandler(enabled = showShareScans) { showShareScans = false }
+    BackHandler(enabled = showAbout) { showAbout = false }
 
     val folderPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
     ) { uri: Uri? ->
+        val id = folderPickerProfileId ?: return@rememberLauncherForActivityResult
+        val target = profiles.find { it.id == id } ?: return@rememberLauncherForActivityResult
         if (uri != null) {
             context.contentResolver.takePersistableUriPermission(
                 uri,
                 Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
             )
-            prefs.edit().putString(KEY_TREE, uri.toString()).apply()
-            treeUri = uri
-            status = "Output folder set. Ready to scan."
+            scope.launch {
+                profileStore.updateProfile(target.copy(folderUri = uri.toString()))
+            }
         }
+        folderPickerProfileId = null
     }
 
     if (showShareScans) {
         ShareScansScreen(
-            treeUri = treeUri,
+            folderUri = activeProfile?.folderUri,
             context = context,
             onBack = { showShareScans = false }
         )
         return
     }
 
-    if (showSettings) {
+    if (showProfileManager) {
+        ProfileManagerScreen(
+            profiles = profiles,
+            activeProfileId = activeProfileId,
+            profileStore = profileStore,
+            onEditProfile = { profile ->
+                settingsProfileId = profile.id
+                showProfileManager = false
+            },
+            onNewProfileCreated = { profile ->
+                settingsProfileId = profile.id
+                showProfileManager = false
+            },
+            onBack = { showProfileManager = false }
+        )
+        return
+    }
+
+    if (showAbout) {
+        AboutScreen(onBack = { showAbout = false })
+        return
+    }
+
+    val editingProfile = settingsProfileId?.let { id -> profiles.find { it.id == id } }
+    if (editingProfile != null) {
         SettingsScreen(
-            grayscale = grayscale,
-            onGrayscaleChange = { setGrayscale(it) },
-            ocrEnabled = ocrEnabled,
-            onOcrEnabledChange = { setOcrEnabled(it) },
-            highQuality = highQuality,
-            onHighQualityChange = { setHighQuality(it) },
-            pageSize = PageSize.entries[pageSizeOrdinal],
-            onPageSizeChange = { setPageSize(it) },
-            autoDetect = autoDetect,
-            onAutoDetectChange = { setAutoDetect(it) },
-            onChangeFolderClick = { folderPicker.launch(treeUri) },
-            treeUri = treeUri,
-            onBack = { showSettings = false }
+            profile = editingProfile,
+            profileStore = profileStore,
+            onChangeFolderClick = {
+                folderPickerProfileId = editingProfile.id
+                folderPicker.launch(editingProfile.folderUri?.let(Uri::parse))
+            },
+            onEditProfiles = {
+                settingsProfileId = null
+                showProfileManager = true
+            },
+            onBack = { settingsProfileId = null }
         )
         return
     }
@@ -223,27 +236,28 @@ fun ScannerScreen() {
     val scannerLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
+        val profile = activeProfile ?: return@rememberLauncherForActivityResult
         val data = GmsDocumentScanningResult.fromActivityResultIntent(result.data)
         val pageUris = data?.pages?.map { it.imageUri } ?: emptyList()
-        val dest = treeUri
+        val dest = profile.folderUri?.let(Uri::parse)
         if (pageUris.isEmpty()) {
             status = "Scan cancelled."
             return@rememberLauncherForActivityResult
         }
         if (dest == null) {
-            status = "No output folder set. Choose one in Settings."
+            status = "No output folder set. Choose one in this profile's settings."
             return@rememberLauncherForActivityResult
         }
-        if (!folderUsable()) {
-            status = "Output folder access was lost. Re-select it in Settings."
+        if (!folderUsable(dest)) {
+            status = "Output folder access was lost. Re-select it in this profile's settings."
             return@rememberLauncherForActivityResult
         }
         status = "Processing…"
-        val useGray = grayscale
-        val useOcr = ocrEnabled
-        val useHigh = highQuality
-        val usePageSize = PageSize.entries[pageSizeOrdinal]
-        val useAutoDetect = autoDetect
+        val useGray = profile.colorMode == ColorMode.GRAYSCALE
+        val useOcr = profile.ocrEnabled
+        val useHigh = profile.quality == Quality.HIGH
+        val usePageSize = profile.pageSize
+        val useAutoDetect = profile.autoDetect
         scope.launch {
             val out: Uri? = try {
                 withContext(Dispatchers.Default) {
@@ -323,14 +337,19 @@ fun ScannerScreen() {
             }
     }
 
-    @OptIn(ExperimentalMaterial3Api::class)
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Platen") },
                 actions = {
-                    IconButton(onClick = { showSettings = true }) {
-                        Icon(Icons.Filled.Settings, contentDescription = "Settings")
+                    IconButton(onClick = { showAbout = true }) {
+                        Icon(Icons.Outlined.Info, contentDescription = "About")
+                    }
+                    IconButton(
+                        onClick = { settingsProfileId = activeProfile?.id },
+                        enabled = activeProfile != null
+                    ) {
+                        Icon(Icons.Filled.Settings, contentDescription = "Profile settings")
                     }
                 }
             )
@@ -362,65 +381,127 @@ fun ScannerScreen() {
                 .padding(horizontal = 32.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(Modifier.weight(1f))
+            if (activeProfile == null) {
+                Spacer(Modifier.weight(1f))
+                CircularProgressIndicator()
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    "Loading profiles…",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.weight(1f))
+            } else {
+                Spacer(Modifier.weight(1f))
 
-            Icon(
-                imageVector = Icons.Filled.DocumentScanner,
-                contentDescription = null,
-                modifier = Modifier
-                    .padding(bottom = 24.dp)
-                    .size(96.dp),
-                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = if (isSystemInDarkTheme()) 0.18f else 0.08f)
-            )
-
-            Button(
-                onClick = { startScan() },
-                enabled = treeUri != null,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(72.dp),
-                contentPadding = ButtonDefaults.ButtonWithIconContentPadding
-            ) {
                 Icon(
-                    Icons.Filled.DocumentScanner,
+                    imageVector = Icons.Filled.DocumentScanner,
                     contentDescription = null,
                     modifier = Modifier
-                        .size(ButtonDefaults.IconSize)
-                        .padding(end = ButtonDefaults.IconSpacing)
+                        .padding(bottom = 24.dp)
+                        .size(96.dp),
+                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = if (isSystemInDarkTheme()) 0.18f else 0.08f)
                 )
-                Text("Scan", style = MaterialTheme.typography.headlineSmall)
-            }
 
-            Spacer(Modifier.height(16.dp))
+                if (profiles.size <= 3) {
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                        contentPadding = PaddingValues(horizontal = 8.dp)
+                    ) {
+                        items(profiles, key = { it.id }) { profile ->
+                            FilterChip(
+                                selected = profile.id == activeProfileId,
+                                onClick = { scope.launch { profileStore.setActiveProfile(profile.id) } },
+                                label = { Text(profile.name) }
+                            )
+                        }
+                    }
+                } else {
+                    var expanded by remember { mutableStateOf(false) }
+                    ExposedDropdownMenuBox(
+                        expanded = expanded,
+                        onExpandedChange = { expanded = !expanded }
+                    ) {
+                        OutlinedTextField(
+                            value = activeProfile.name,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Profile") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .menuAnchor(MenuAnchorType.PrimaryNotEditable),
+                            colors = ExposedDropdownMenuDefaults.textFieldColors()
+                        )
+                        ExposedDropdownMenu(
+                            expanded = expanded,
+                            onDismissRequest = { expanded = false }
+                        ) {
+                            profiles.forEach { profile ->
+                                DropdownMenuItem(
+                                    text = { Text(profile.name) },
+                                    onClick = {
+                                        expanded = false
+                                        scope.launch { profileStore.setActiveProfile(profile.id) }
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
 
-            OutlinedButton(
-                onClick = { showShareScans = true },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Manage Scans")
-            }
+                Spacer(Modifier.height(16.dp))
 
-            Spacer(Modifier.weight(1.5f))
+                Button(
+                    onClick = { startScan() },
+                    enabled = activeProfile.folderUri != null,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(72.dp),
+                    contentPadding = ButtonDefaults.ButtonWithIconContentPadding
+                ) {
+                    Icon(
+                        Icons.Filled.DocumentScanner,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(ButtonDefaults.IconSize)
+                            .padding(end = ButtonDefaults.IconSpacing)
+                    )
+                    Text("Scan", style = MaterialTheme.typography.headlineSmall)
+                }
 
-            if (status.isNotEmpty()) {
+                Spacer(Modifier.height(16.dp))
+
+                OutlinedButton(
+                    onClick = { showShareScans = true },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Manage Scans")
+                }
+
+                Spacer(Modifier.weight(1.5f))
+
+                if (status.isNotEmpty()) {
+                    Text(
+                        status,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
+                }
+
+                val folderCaption = when {
+                    activeProfile.folderUri == null -> "Go to Settings to choose an output folder."
+                    else -> "Saving to ${activeProfile.name}"
+                }
                 Text(
-                    status,
-                    style = MaterialTheme.typography.bodyMedium,
+                    folderCaption,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 4.dp)
+                    modifier = Modifier.padding(bottom = 16.dp)
                 )
             }
-
-            val folderCaption = when {
-                treeUri == null -> "Go to Settings to choose an output folder."
-                else -> "Saving to Scans"
-            }
-            Text(
-                folderCaption,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 16.dp)
-            )
         }
     }
 }
@@ -428,46 +509,76 @@ fun ScannerScreen() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
-    grayscale: Boolean,
-    onGrayscaleChange: (Boolean) -> Unit,
-    ocrEnabled: Boolean,
-    onOcrEnabledChange: (Boolean) -> Unit,
-    highQuality: Boolean,
-    onHighQualityChange: (Boolean) -> Unit,
-    pageSize: PageSize,
-    onPageSizeChange: (PageSize) -> Unit,
-    autoDetect: Boolean,
-    onAutoDetectChange: (Boolean) -> Unit,
+    profile: Profile,
+    profileStore: ProfileStore,
     onChangeFolderClick: () -> Unit,
-    treeUri: Uri?,
+    onEditProfiles: () -> Unit,
     onBack: () -> Unit
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    fun update(block: Profile.() -> Profile) {
+        scope.launch { profileStore.updateProfile(profile.block()) }
+    }
+    val folderLabel by produceState(
+        initialValue = if (profile.folderUri == null) "No output folder" else "Loading…",
+        key1 = profile.folderUri
+    ) {
+        val uriStr = profile.folderUri
+        value = if (uriStr == null) {
+            "No output folder"
+        } else {
+            withContext(Dispatchers.IO) {
+                try {
+                    DocumentFile.fromTreeUri(context, Uri.parse(uriStr))?.name ?: "Output folder"
+                } catch (e: Exception) {
+                    "Output folder"
+                }
+            }
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Settings") },
+                title = { Text("Profile settings") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    TextButton(onClick = onEditProfiles) {
+                        Text("Profiles")
                     }
                 }
             )
         }
     ) { innerPadding ->
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(innerPadding)
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 24.dp, vertical = 16.dp)
-    ) {
-            Text("Output folder", style = MaterialTheme.typography.labelLarge)
-            Spacer(Modifier.height(4.dp))
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp, vertical = 16.dp)
+        ) {
+            Text(
+                profile.name,
+                style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                folderLabel,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
+            )
+
             FilledTonalButton(
                 onClick = onChangeFolderClick,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(if (treeUri == null) "Choose output folder" else "Change output folder")
+                Text(if (profile.folderUri == null) "Choose output folder" else "Change output folder")
             }
 
             Spacer(Modifier.height(16.dp))
@@ -477,11 +588,17 @@ fun SettingsScreen(
             Text("Mode", style = MaterialTheme.typography.labelLarge)
             Spacer(Modifier.height(4.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                RadioButton(selected = !grayscale, onClick = { onGrayscaleChange(false) })
+                RadioButton(
+                    selected = profile.colorMode == ColorMode.BITONAL,
+                    onClick = { update { copy(colorMode = ColorMode.BITONAL) } }
+                )
                 Text("Black & white (small)")
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                RadioButton(selected = grayscale, onClick = { onGrayscaleChange(true) })
+                RadioButton(
+                    selected = profile.colorMode == ColorMode.GRAYSCALE,
+                    onClick = { update { copy(colorMode = ColorMode.GRAYSCALE) } }
+                )
                 Text("Grayscale (smoother, larger)")
             }
 
@@ -492,7 +609,10 @@ fun SettingsScreen(
             Text("Searchable PDF", style = MaterialTheme.typography.labelLarge)
             Spacer(Modifier.height(4.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(checked = ocrEnabled, onCheckedChange = onOcrEnabledChange)
+                Checkbox(
+                    checked = profile.ocrEnabled,
+                    onCheckedChange = { update { copy(ocrEnabled = !ocrEnabled) } }
+                )
                 Text("Make PDF searchable (OCR)")
             }
 
@@ -503,11 +623,17 @@ fun SettingsScreen(
             Text("Quality", style = MaterialTheme.typography.labelLarge)
             Spacer(Modifier.height(4.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                RadioButton(selected = !highQuality, onClick = { onHighQualityChange(false) })
+                RadioButton(
+                    selected = profile.quality == Quality.STANDARD,
+                    onClick = { update { copy(quality = Quality.STANDARD) } }
+                )
                 Text("Standard (300 DPI)")
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                RadioButton(selected = highQuality, onClick = { onHighQualityChange(true) })
+                RadioButton(
+                    selected = profile.quality == Quality.HIGH,
+                    onClick = { update { copy(quality = Quality.HIGH) } }
+                )
                 Text("High (400 DPI)")
             }
 
@@ -518,20 +644,317 @@ fun SettingsScreen(
             Text("Page size", style = MaterialTheme.typography.labelLarge)
             Spacer(Modifier.height(4.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                RadioButton(selected = pageSize == PageSize.FIT, onClick = { onPageSizeChange(PageSize.FIT) })
+                RadioButton(
+                    selected = profile.pageSize == PageSize.FIT,
+                    onClick = { update { copy(pageSize = PageSize.FIT) } }
+                )
                 Text("Fit to content")
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                RadioButton(selected = pageSize == PageSize.LETTER, onClick = { onPageSizeChange(PageSize.LETTER) })
+                RadioButton(
+                    selected = profile.pageSize == PageSize.LETTER,
+                    onClick = { update { copy(pageSize = PageSize.LETTER) } }
+                )
                 Text("Letter")
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                RadioButton(selected = pageSize == PageSize.LEGAL, onClick = { onPageSizeChange(PageSize.LEGAL) })
+                RadioButton(
+                    selected = profile.pageSize == PageSize.LEGAL,
+                    onClick = { update { copy(pageSize = PageSize.LEGAL) } }
+                )
                 Text("Legal")
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(checked = autoDetect, onCheckedChange = onAutoDetectChange)
+                Checkbox(
+                    checked = profile.autoDetect,
+                    onCheckedChange = { update { copy(autoDetect = !autoDetect) } }
+                )
                 Text("Auto-detect page size")
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ProfileManagerScreen(
+    profiles: List<Profile>,
+    activeProfileId: String,
+    profileStore: ProfileStore,
+    onEditProfile: (Profile) -> Unit,
+    onNewProfileCreated: (Profile) -> Unit,
+    onBack: () -> Unit
+) {
+    val scope = rememberCoroutineScope()
+    var showAddDialog by remember { mutableStateOf(false) }
+    var showRenameDialog by remember { mutableStateOf(false) }
+    var renameProfileId by remember { mutableStateOf<String?>(null) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    var deleteProfileId by remember { mutableStateOf<String?>(null) }
+
+    fun promptAdd() { showAddDialog = true }
+    fun promptRename(id: String) { renameProfileId = id; showRenameDialog = true }
+    fun promptDelete(id: String) { deleteProfileId = id; showDeleteDialog = true }
+
+    if (showAddDialog) {
+        var name by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showAddDialog = false },
+            title = { Text("New profile") },
+            text = {
+                TextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Name") },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showAddDialog = false
+                        val trimmed = name.trim()
+                        if (trimmed.isNotEmpty()) {
+                            scope.launch {
+                                val newProfile = profileStore.addProfile(trimmed)
+                                onNewProfileCreated(newProfile)
+                            }
+                        }
+                    },
+                    enabled = name.trim().isNotEmpty()
+                ) { Text("Create") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    if (showRenameDialog) {
+        val profile = profiles.find { it.id == renameProfileId }
+        var name by remember(renameProfileId) { mutableStateOf(profile?.name ?: "") }
+        AlertDialog(
+            onDismissRequest = {
+                showRenameDialog = false
+                renameProfileId = null
+            },
+            title = { Text("Rename profile") },
+            text = {
+                TextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Name") },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val id = renameProfileId
+                        showRenameDialog = false
+                        renameProfileId = null
+                        val trimmed = name.trim()
+                        if (id != null && trimmed.isNotEmpty()) {
+                            scope.launch { profileStore.renameProfile(id, trimmed) }
+                        }
+                    },
+                    enabled = name.trim().isNotEmpty()
+                ) { Text("Rename") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showRenameDialog = false
+                    renameProfileId = null
+                }) { Text("Cancel") }
+            }
+        )
+    }
+
+    if (showDeleteDialog) {
+        val profile = profiles.find { it.id == deleteProfileId }
+        val canDelete = profiles.size > 1
+        AlertDialog(
+            onDismissRequest = {
+                showDeleteDialog = false
+                deleteProfileId = null
+            },
+            title = { Text("Delete ${profile?.name ?: "profile"}?") },
+            text = { Text("This can't be undone.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val id = deleteProfileId
+                        showDeleteDialog = false
+                        deleteProfileId = null
+                        if (id != null && canDelete) {
+                            scope.launch { profileStore.deleteProfile(id) }
+                        }
+                    },
+                    enabled = canDelete
+                ) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showDeleteDialog = false
+                    deleteProfileId = null
+                }) { Text("Cancel") }
+            }
+        )
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Profiles") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { promptAdd() }) {
+                        Icon(Icons.Filled.Add, contentDescription = "Add profile")
+                    }
+                }
+            )
+        }
+    ) { innerPadding ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+        ) {
+            items(profiles, key = { it.id }) { profile ->
+                val isActive = profile.id == activeProfileId
+                val canDelete = profiles.size > 1
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onEditProfile(profile) }
+                        .padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            profile.name,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = if (isActive)
+                                MaterialTheme.colorScheme.primary
+                            else
+                                MaterialTheme.colorScheme.onSurface
+                        )
+                        if (isActive) {
+                            Text(
+                                "Active",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                    TextButton(onClick = { promptRename(profile.id) }) { Text("Rename") }
+                    IconButton(
+                        onClick = { promptDelete(profile.id) },
+                        enabled = canDelete
+                    ) {
+                        Icon(Icons.Filled.Delete, contentDescription = "Delete profile")
+                    }
+                }
+                HorizontalDivider()
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AboutScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("About") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                }
+            )
+        }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp, vertical = 16.dp)
+        ) {
+            Text(
+                "Platen",
+                style = MaterialTheme.typography.headlineSmall
+            )
+            Text(
+                "Version 1.1.0",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Spacer(Modifier.height(16.dp))
+            HorizontalDivider()
+            Spacer(Modifier.height(16.dp))
+
+            Text("Tips", style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Cloud sync: To sync scans automatically, set a profile's output folder to a folder inside your cloud storage app (Nextcloud, Google Drive, Dropbox, and others). Platen saves there; your cloud app handles syncing.",
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Profiles: Create a profile for each type of document. Each profile remembers its own output folder and scan settings — for example, a Receipts profile and a Documents profile saving to different folders.",
+                style = MaterialTheme.typography.bodyMedium
+            )
+
+            Spacer(Modifier.height(16.dp))
+            HorizontalDivider()
+            Spacer(Modifier.height(16.dp))
+
+            Text("About", style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Platen is a private, on-device document scanner. No account, no servers, no data collection.",
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Open source under the Apache License 2.0.",
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "© 2026 Law Office of Samuel H. Park, APC",
+                style = MaterialTheme.typography.bodySmall
+            )
+
+            Spacer(Modifier.height(16.dp))
+            HorizontalDivider()
+            Spacer(Modifier.height(16.dp))
+
+            TextButton(
+                onClick = {
+                    val intent = Intent(
+                        Intent.ACTION_VIEW,
+                        Uri.parse("https://sparklawfirm.com/platen-privacy-policy.html")
+                    )
+                    try {
+                        context.startActivity(intent)
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "No browser available", Toast.LENGTH_LONG).show()
+                    }
+                }
+            ) {
+                Text("Privacy Policy")
             }
         }
     }
@@ -542,10 +965,11 @@ data class PdfEntry(val uri: Uri, val name: String, val dateLabel: String, val m
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ShareScansScreen(
-    treeUri: Uri?,
+    folderUri: String?,
     context: Context,
     onBack: () -> Unit
 ) {
+    val treeUri = folderUri?.let(Uri::parse)
     val scope = rememberCoroutineScope()
     var loading by remember { mutableStateOf(true) }
     var entries by remember { mutableStateOf<List<PdfEntry>>(emptyList()) }
@@ -658,7 +1082,7 @@ fun ShareScansScreen(
             when {
                 treeUri == null -> {
                     Text(
-                        "No output folder set. Go to Settings → Change output folder.",
+                        "No output folder set. Go to this profile's settings to choose one.",
                         modifier = Modifier
                             .align(Alignment.Center)
                             .padding(32.dp),

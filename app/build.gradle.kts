@@ -11,6 +11,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("org.jetbrains.kotlin.plugin.serialization") version "2.0.21"
 }
 
 android {
@@ -67,6 +68,8 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.documentfile:documentfile:1.0.1")
+    implementation("androidx.datastore:datastore-preferences:1.1.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     // ML Kit document scanner: capture UI, edge detection, deskew, cleanup.
     implementation("com.google.android.gms:play-services-mlkit-document-scanner:16.0.0-beta1")
     // PdfBox-Android for PDF assembly.
