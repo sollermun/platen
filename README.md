@@ -9,7 +9,8 @@ on the device — no account, no servers, no analytics, no data collection.
 
 ## Install
 
-**Google Play** — coming soon (`com.sparklaw.platen`)
+**[Google Play](https://play.google.com/store/apps/details?id=com.sparklaw.platen)**
+— recommended; automatic updates.
 
 **APK (sideload):** Download `app-release.apk` from
 [Releases](https://github.com/sollermun/platen/releases). Enable *Install
