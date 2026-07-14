@@ -19,7 +19,8 @@ data class Profile(
     @Serializable(with = PageSizeSerializer::class) val pageSize: PageSize,
     val ocrEnabled: Boolean,
     val autoDetect: Boolean,
-    val filenamePattern: String = "{datetime}_{profile}"
+    val filenamePattern: String = "{datetime}_{profile}",
+    val lastCustomName: String = ""
 )
 
 @Serializable

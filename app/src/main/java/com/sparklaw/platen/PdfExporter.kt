@@ -77,7 +77,8 @@ internal fun sanitizeFilename(name: String): String {
 internal fun expandTokens(
     pattern: String,
     profileName: String,
-    now: LocalDateTime
+    now: LocalDateTime,
+    customName: String = ""
 ): String = pattern
     .ifBlank { "{datetime}_{profile}" }
     .replace("{datetime}", now.format(FMT_DATETIME))
@@ -90,14 +91,16 @@ internal fun expandTokens(
     .replace("{minute}",   now.format(FMT_MINUTE))
     .replace("{second}",   now.format(FMT_SECOND))
     .replace("{profile}",  profileName)
+    .replace("{custom}",   customName)
 
 private fun buildFilename(
     pattern: String,
     profileName: String,
     now: LocalDateTime,
-    dir: androidx.documentfile.provider.DocumentFile
+    dir: androidx.documentfile.provider.DocumentFile,
+    customName: String = ""
 ): String {
-    val raw = expandTokens(pattern, profileName, now)
+    val raw = expandTokens(pattern, profileName, now, customName)
     val base = sanitizeFilename(raw.replace("{n}", ""))
     val candidate = "$base.pdf"
     if (dir.findFile(candidate) == null) return base
@@ -122,7 +125,8 @@ object PdfExporter {
         pageSize: PageSize = PageSize.FIT,
         autoDetect: Boolean = false,
         filenamePattern: String = "{datetime}_{profile}",
-        profileName: String = "scan"
+        profileName: String = "scan",
+        customName: String = ""
     ): Uri? {
         if (pages.isEmpty()) return null
         val doc = PDDocument()
@@ -180,7 +184,7 @@ object PdfExporter {
             if (dir == null || !dir.exists() || !dir.canWrite())
                 throw FolderMissingException("Folder unavailable or unwritable: $treeUri")
             val now = LocalDateTime.now()
-            val baseName = buildFilename(filenamePattern, profileName, now, dir)
+            val baseName = buildFilename(filenamePattern, profileName, now, dir, customName)
             val file = dir.createFile("application/pdf", "$baseName.pdf")
                 ?: throw CreateFileException(treeUri, "createFile returned null for $treeUri")
             val os = context.contentResolver.openOutputStream(file.uri)

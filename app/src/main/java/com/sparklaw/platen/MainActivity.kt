@@ -146,6 +146,14 @@ fun ScannerScreen() {
     val snackbarHostState = remember { SnackbarHostState() }
     var snackbarIsError by remember { mutableStateOf(false) }
 
+    data class PendingScan(
+        val pageUris: List<Uri>,
+        val dest: Uri,
+        val profileSnapshot: Profile
+    )
+    var pendingScan by remember { mutableStateOf<PendingScan?>(null) }
+    var customNameDraft by remember { mutableStateOf("") }
+
     fun folderUsable(uri: Uri?): Boolean {
         val u = uri ?: return false
         return try {
@@ -261,6 +269,11 @@ fun ScannerScreen() {
             status = "Output folder access was lost. Re-select it in this profile's settings."
             return@rememberLauncherForActivityResult
         }
+        if (profile.filenamePattern.contains("{custom}")) {
+            pendingScan = PendingScan(pageUris, dest, profile)
+            customNameDraft = profile.lastCustomName
+            return@rememberLauncherForActivityResult
+        }
         status = "Processing…"
         val useGray = profile.colorMode == ColorMode.GRAYSCALE
         val useOcr = profile.ocrEnabled
@@ -332,6 +345,119 @@ fun ScannerScreen() {
                 if (result == SnackbarResult.ActionPerformed) shareLast()
             }
         }
+    }
+
+    fun doExport(scan: PendingScan, customName: String) {
+        val profile = scan.profileSnapshot
+        val useGray = profile.colorMode == ColorMode.GRAYSCALE
+        val useOcr = profile.ocrEnabled
+        val useHigh = profile.quality == Quality.HIGH
+        val usePageSize = profile.pageSize
+        val useAutoDetect = profile.autoDetect
+        val useFilenamePattern = profile.filenamePattern
+        val useProfileName = profile.name
+        val sanitizedCustom = sanitizeFilename(customName.ifBlank { "Untitled" })
+        status = "Processing…"
+        scope.launch {
+            val out: Uri? = try {
+                withContext(Dispatchers.Default) {
+                    val maxEdge = if (useHigh) 4000 else 3000
+                    val dpi = if (useHigh) 400f else 300f
+                    val processed = scan.pageUris.mapNotNull { uri ->
+                        decodeFullRes(context, uri)?.let { full ->
+                            val straight = deskewBitmap(full)
+                            val cropped = detectAndCropPage(straight)
+                            val whitened = whitenResidualFill(
+                                if (cropped.isMutable) cropped
+                                else cropped.copy(Bitmap.Config.ARGB_8888, true)
+                            )
+                            val page = downsampleBitmap(whitened, maxEdge)
+                            if (useGray) Binarizer.toGrayscale(page) else Binarizer.toBitonal(page)
+                        }
+                    }
+                    val words: List<List<OcrWord>>? = if (useOcr) {
+                        withContext(Dispatchers.Main) { status = "Recognizing text…" }
+                        processed.map { bmp -> Ocr.recognize(bmp) }
+                    } else null
+                    PdfExporter.export(context, scan.dest, processed, words, dpi, usePageSize, useAutoDetect, useFilenamePattern, useProfileName, sanitizedCustom)
+                }
+            } catch (e: Throwable) {
+                android.util.Log.e("Platen", "save failed uri=${scan.dest} profile=${profile.name}", e)
+                snackbarIsError = true
+                val msg = when (e) {
+                    is PermissionLostException ->
+                        "Folder access was lost. Re-select the output folder in Settings."
+                    is FolderMissingException ->
+                        "The output folder is missing or moved. Re-select it in Settings."
+                    is CreateFileException ->
+                        "${providerLabel(e.treeUri)} wouldn't create the file. Check the folder, then try again."
+                    is WriteFailedException ->
+                        if (isLocalProvider(e.treeUri))
+                            "Couldn't write the file to the selected folder."
+                        else
+                            "Saving to ${providerLabel(e.treeUri)} failed — it may be offline. Try again, or save to a local folder and let it sync."
+                    is java.io.IOException ->
+                        if (e.message?.contains("space", true) == true ||
+                            e.message?.contains("ENOSPC", true) == true)
+                            "Not enough storage to save the scan."
+                        else
+                            "Couldn't save — check your output folder in Settings."
+                    else ->
+                        "Couldn't save the scan. Please try again."
+                }
+                snackbarHostState.showSnackbar(msg)
+                null
+            }
+            status = ""
+            if (out != null) {
+                snackbarIsError = false
+                lastSaved = out
+                val filename = out.lastPathSegment?.substringAfterLast('/') ?: "scan"
+                val result = snackbarHostState.showSnackbar(
+                    message = "Saved $filename",
+                    actionLabel = "Share",
+                    duration = SnackbarDuration.Long
+                )
+                if (result == SnackbarResult.ActionPerformed) shareLast()
+            }
+        }
+    }
+
+    val pending = pendingScan
+    if (pending != null) {
+        AlertDialog(
+            onDismissRequest = {
+                pendingScan = null
+                status = "Scan cancelled."
+            },
+            title = { Text("Name this scan") },
+            text = {
+                OutlinedTextField(
+                    value = customNameDraft,
+                    onValueChange = { customNameDraft = it },
+                    label = { Text("Name") },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val entered = customNameDraft.trim()
+                    scope.launch {
+                        profileStore.updateProfile(
+                            pending.profileSnapshot.copy(lastCustomName = entered)
+                        )
+                    }
+                    pendingScan = null
+                    doExport(pending, entered)
+                }) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    pendingScan = null
+                    status = "Scan cancelled."
+                }) { Text("Cancel") }
+            }
+        )
     }
 
     fun startScan() {
@@ -728,7 +854,7 @@ fun SettingsScreen(
             var patternField by remember(profile.id) { mutableStateOf(TextFieldValue(profile.filenamePattern)) }
             val sampleTime = remember { LocalDateTime.of(2026, 1, 15, 9, 30, 0) }
             val previewName = remember(patternField.text, profile.name) {
-                sanitizeFilename(expandTokens(patternField.text, profile.name, sampleTime)) + ".pdf"
+                sanitizeFilename(expandTokens(patternField.text, profile.name, sampleTime, "custom")) + ".pdf"
             }
             OutlinedTextField(
                 value = patternField,
@@ -752,7 +878,7 @@ fun SettingsScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(4.dp))
-            val tokens = remember { listOf("{datetime}", "{date}", "{time}", "{year}", "{month}", "{day}", "{hour}", "{minute}", "{second}", "{profile}", "{n}") }
+            val tokens = remember { listOf("{datetime}", "{date}", "{time}", "{year}", "{month}", "{day}", "{hour}", "{minute}", "{second}", "{profile}", "{n}", "{custom}") }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 tokens.forEach { token ->
                     AssistChip(
