@@ -628,7 +628,12 @@ fun SettingsScreen(
             ) {
                 Text(if (profile.folderUri == null) "Choose output folder" else "Change output folder")
             }
-
+ Text(
+                "Tip: pick a folder your cloud app syncs (Nextcloud, Drive, Dropbox) to upload scans automatically.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 6.dp)
+            )
             Spacer(Modifier.height(16.dp))
             HorizontalDivider()
             Spacer(Modifier.height(16.dp))
