@@ -284,24 +284,30 @@ fun ScannerScreen() {
                     PdfExporter.export(context, dest, processed, words, dpi, usePageSize, useAutoDetect)
                 }
             } catch (e: Throwable) {
-                android.util.Log.e("Platen", "Scan export failed", e)
+                android.util.Log.e("Platen", "save failed uri=$dest profile=${activeProfile?.name}", e)
                 snackbarIsError = true
-                snackbarHostState.showSnackbar(
-                    when {
-                        e is java.io.IOException &&
-                            (e.message?.contains("space", true) == true ||
-                             e.message?.contains("ENOSPC", true) == true) ->
+                val msg = when (e) {
+                    is PermissionLostException ->
+                        "Folder access was lost. Re-select the output folder in Settings."
+                    is FolderMissingException ->
+                        "The output folder is missing or moved. Re-select it in Settings."
+                    is CreateFileException ->
+                        "${providerLabel(e.treeUri)} wouldn't create the file. Check the folder, then try again."
+                    is WriteFailedException ->
+                        if (isLocalProvider(e.treeUri))
+                            "Couldn't write the file to the selected folder."
+                        else
+                            "Saving to ${providerLabel(e.treeUri)} failed — it may be offline. Try again, or save to a local folder and let it sync."
+                    is java.io.IOException ->
+                        if (e.message?.contains("space", true) == true ||
+                            e.message?.contains("ENOSPC", true) == true)
                             "Not enough storage to save the scan."
-                        e is SecurityException ->
-                            "Output folder access was lost. Re-select it in Settings."
-                        e is java.io.IOException &&
-                            e.message?.contains("createFile returned null") == true ->
-                            "Couldn't create the file. If saving to a cloud folder (Nextcloud, etc.), try a local folder instead."
-                        e is java.io.IOException ->
+                        else
                             "Couldn't save — check your output folder in Settings."
-                        else -> "Couldn't save the scan. Please try again."
-                    }
-                )
+                    else ->
+                        "Couldn't save the scan. Please try again."
+                }
+                snackbarHostState.showSnackbar(msg)
                 null
             }
             status = ""

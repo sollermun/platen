@@ -39,6 +39,22 @@ private data class DrawRect(
     val imgW: Float, val imgH: Float
 )
 
+sealed class SaveException(message: String, cause: Throwable? = null) : Exception(message, cause)
+class PermissionLostException(message: String) : SaveException(message)
+class FolderMissingException(message: String) : SaveException(message)
+class CreateFileException(val treeUri: Uri, message: String) : SaveException(message)
+class WriteFailedException(val treeUri: Uri, message: String, cause: Throwable) : SaveException(message, cause)
+
+internal fun isLocalProvider(uri: Uri): Boolean =
+    uri.authority == "com.android.externalstorage.documents"
+
+internal fun providerLabel(uri: Uri): String = when {
+    uri.authority?.contains("nextcloud", ignoreCase = true) == true -> "Nextcloud"
+    uri.authority?.contains("docs.storage", ignoreCase = true) == true -> "Google Drive"
+    isLocalProvider(uri) -> "the selected folder"
+    else -> "the sync app"
+}
+
 object PdfExporter {
     fun export(
         context: Context,
@@ -96,16 +112,24 @@ object PdfExporter {
                     }
                 }
             }
-val dir = DocumentFile.fromTreeUri(context, treeUri)
-                ?: throw java.io.IOException("Output folder is unavailable.")
-            if (!dir.canWrite())
-                throw SecurityException("No write access to the output folder.")
+            val hasWritePerm = context.contentResolver.persistedUriPermissions.any { perm ->
+                perm.uri == treeUri && perm.isWritePermission
+            }
+            if (!hasWritePerm)
+                throw PermissionLostException("No persisted write permission for $treeUri")
+            val dir = DocumentFile.fromTreeUri(context, treeUri)
+            if (dir == null || !dir.exists() || !dir.canWrite())
+                throw FolderMissingException("Folder unavailable or unwritable: $treeUri")
             val stamp = SimpleDateFormat("yyyy.MM.dd.HH.mm.ss", Locale.US).format(Date())
             val file = dir.createFile("application/pdf", "$stamp scan.pdf")
-                ?: throw java.io.IOException("createFile returned null")
+                ?: throw CreateFileException(treeUri, "createFile returned null for $treeUri")
             val os = context.contentResolver.openOutputStream(file.uri)
-                ?: throw java.io.IOException("Could not open the output file for writing.")
-            os.use { doc.save(it) }
+                ?: throw WriteFailedException(treeUri, "openOutputStream returned null", java.io.IOException("null stream"))
+            try {
+                os.use { doc.save(it) }
+            } catch (e: java.io.IOException) {
+                throw WriteFailedException(treeUri, "IOException during doc.save: ${e.message}", e)
+            }
             return file.uri
         } finally {
             doc.close()
