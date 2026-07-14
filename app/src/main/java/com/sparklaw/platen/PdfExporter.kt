@@ -58,8 +58,14 @@ internal fun providerLabel(uri: Uri): String = when {
 private val FMT_DATE     = DateTimeFormatter.ofPattern("yyyy-MM-dd",          Locale.US)
 private val FMT_TIME     = DateTimeFormatter.ofPattern("HH-mm-ss",            Locale.US)
 private val FMT_DATETIME = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss", Locale.US)
+private val FMT_YEAR   = DateTimeFormatter.ofPattern("yyyy", Locale.US)
+private val FMT_MONTH  = DateTimeFormatter.ofPattern("MM",   Locale.US)
+private val FMT_DAY    = DateTimeFormatter.ofPattern("dd",   Locale.US)
+private val FMT_HOUR   = DateTimeFormatter.ofPattern("HH",   Locale.US)
+private val FMT_MINUTE = DateTimeFormatter.ofPattern("mm",   Locale.US)
+private val FMT_SECOND = DateTimeFormatter.ofPattern("ss",   Locale.US)
 
-private fun sanitizeFilename(name: String): String {
+internal fun sanitizeFilename(name: String): String {
     val cleaned = name
         .replace(Regex("[:/\\\\?*\"<>|]"), "_")
         .replace(Regex("[\\x00-\\x1F]"), "")
@@ -68,18 +74,30 @@ private fun sanitizeFilename(name: String): String {
     return cleaned.ifBlank { "scan" }.take(120)
 }
 
+internal fun expandTokens(
+    pattern: String,
+    profileName: String,
+    now: LocalDateTime
+): String = pattern
+    .ifBlank { "{datetime}_{profile}" }
+    .replace("{datetime}", now.format(FMT_DATETIME))
+    .replace("{date}",     now.format(FMT_DATE))
+    .replace("{time}",     now.format(FMT_TIME))
+    .replace("{year}",     now.format(FMT_YEAR))
+    .replace("{month}",    now.format(FMT_MONTH))
+    .replace("{day}",      now.format(FMT_DAY))
+    .replace("{hour}",     now.format(FMT_HOUR))
+    .replace("{minute}",   now.format(FMT_MINUTE))
+    .replace("{second}",   now.format(FMT_SECOND))
+    .replace("{profile}",  profileName)
+
 private fun buildFilename(
     pattern: String,
     profileName: String,
     now: LocalDateTime,
     dir: androidx.documentfile.provider.DocumentFile
 ): String {
-    val raw = pattern
-        .ifBlank { "{datetime}_{profile}" }
-        .replace("{date}",     now.format(FMT_DATE))
-        .replace("{time}",     now.format(FMT_TIME))
-        .replace("{datetime}", now.format(FMT_DATETIME))
-        .replace("{profile}",  profileName)
+    val raw = expandTokens(pattern, profileName, now)
     val base = sanitizeFilename(raw.replace("{n}", ""))
     val candidate = "$base.pdf"
     if (dir.findFile(candidate) == null) return base
