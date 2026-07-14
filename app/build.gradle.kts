@@ -46,6 +46,9 @@ android {
                 "proguard-rules.pro"
             )
             isDebuggable = false
+            ndk {
+                debugSymbolLevel = "FULL"
+            }
             // Attach signing only when keystore.properties is present locally.
             signingConfig = if (keystorePropsFile.exists())
                 signingConfigs.getByName("release") else null
@@ -58,7 +61,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
 }
 
 dependencies {

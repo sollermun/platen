@@ -15,6 +15,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.IntentSenderRequest
+import com.sparklaw.platen.BuildConfig
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -47,7 +48,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DocumentScanner
-import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -1120,7 +1121,7 @@ fun AboutScreen(onBack: () -> Unit) {
                 style = MaterialTheme.typography.headlineSmall
             )
             Text(
-                "Version 1.1.0",
+                "Version ${BuildConfig.VERSION_NAME}",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -1287,7 +1288,7 @@ fun ShareScansScreen(
                         onClick = { shareSelected() },
                         enabled = checked.isNotEmpty()
                     ) {
-                        Icon(Icons.Filled.Send, contentDescription = "Share selected")
+                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Share selected")
                     }
                     IconButton(
                         onClick = { showDeleteDialog = true },
