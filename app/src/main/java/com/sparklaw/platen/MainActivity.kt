@@ -25,10 +25,16 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -657,7 +663,8 @@ fun SettingsScreen(
                     }
                 }
             )
-        }
+        },
+        contentWindowInsets = WindowInsets.systemBars.union(WindowInsets.ime)
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -780,28 +787,74 @@ fun SettingsScreen(
                 )
                 Text("Auto-detect page size")
             }
-            Text("Filename pattern", style = MaterialTheme.typography.labelLarge)
+            var showLegend by remember { mutableStateOf(false) }
+            if (showLegend) {
+                AlertDialog(
+                    onDismissRequest = { showLegend = false },
+                    title = { Text("Filename tokens") },
+                    text = {
+                        Column {
+                            val entries = listOf(
+                                "{datetime}" to "2026-01-15_09-30-00",
+                                "{date}"     to "2026-01-15",
+                                "{time}"     to "09-30-00",
+                                "{year}"     to "2026",
+                                "{month}"    to "01",
+                                "{day}"      to "15",
+                                "{hour}"     to "09",
+                                "{minute}"   to "30",
+                                "{second}"   to "00",
+                                "{profile}"  to "profile name",
+                                "{n}"        to "collision counter (2, 3 …)",
+                                "{custom}"   to "prompted at scan time"
+                            )
+                            entries.forEach { (token, desc) ->
+                                Row(modifier = Modifier.padding(vertical = 2.dp)) {
+                                    Text(
+                                        token,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.Medium,
+                                        modifier = Modifier.width(100.dp)
+                                    )
+                                    Text(
+                                        desc,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { showLegend = false }) { Text("Close") }
+                    }
+                )
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    "Filename pattern",
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(
+                    onClick = { showLegend = true },
+                    modifier = Modifier.size(20.dp)
+                ) {
+                    Icon(
+                        Icons.Outlined.Info,
+                        contentDescription = "Token legend",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
             var patternField by remember(profile.id) { mutableStateOf(TextFieldValue(profile.filenamePattern)) }
             val sampleTime = remember { LocalDateTime.of(2026, 1, 15, 9, 30, 0) }
             val previewName = remember(patternField.text, profile.name) {
                 sanitizeFilename(expandTokens(patternField.text, profile.name, sampleTime, "custom")) + ".pdf"
             }
-            OutlinedTextField(
-                value = patternField,
-                onValueChange = {
-                    patternField = it
-                    update { copy(filenamePattern = it.text) }
-                },
-                label = { Text("Pattern") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Text(
-                "Preview: $previewName",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(Modifier.height(4.dp))
             Text(
                 "Insert token",
                 style = MaterialTheme.typography.labelSmall,
@@ -829,6 +882,22 @@ fun SettingsScreen(
                     )
                 }
             }
+            Text(
+                "Preview: $previewName",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(4.dp))
+            OutlinedTextField(
+                value = patternField,
+                onValueChange = {
+                    patternField = it
+                    update { copy(filenamePattern = it.text) }
+                },
+                label = { Text("Pattern") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
         }
     }
 }
