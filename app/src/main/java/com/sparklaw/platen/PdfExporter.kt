@@ -102,7 +102,7 @@ val dir = DocumentFile.fromTreeUri(context, treeUri)
                 throw SecurityException("No write access to the output folder.")
             val stamp = SimpleDateFormat("yyyy.MM.dd.HH.mm.ss", Locale.US).format(Date())
             val file = dir.createFile("application/pdf", "$stamp scan.pdf")
-                ?: throw java.io.IOException("Could not create the file in the output folder.")
+                ?: throw java.io.IOException("createFile returned null")
             val os = context.contentResolver.openOutputStream(file.uri)
                 ?: throw java.io.IOException("Could not open the output file for writing.")
             os.use { doc.save(it) }

@@ -20,7 +20,7 @@ private val TertiaryContainer      = Color(0xFFCFDEE8)
 
 private val SurfaceLight   = Color(0xFFF5F8FC)
 private val BackgroundLight= Color(0xFFF0F4F8)
-private val OnSurfaceLight = Color(0xFF1A2530)
+private val OnSurfaceLight = Color(0xFF0E1822)
 private val OutlineLight   = Color(0xFF8AAABF)
 
 private val SurfaceDark    = Color(0xFF0F1E2B)
@@ -41,12 +41,12 @@ private val LightColorScheme = lightColorScheme(
     onTertiary             = Color.White,
     tertiaryContainer      = TertiaryContainer,
     onTertiaryContainer    = Color(0xFF1A2D38),
-    background             = BackgroundLight,
+    background             = Color(0xFFFAFBFC),
     onBackground           = OnSurfaceLight,
-    surface                = SurfaceLight,
+    surface                = Color(0xFFFAFBFC),
     onSurface              = OnSurfaceLight,
     surfaceVariant         = Color(0xFFDCE8F0),
-    onSurfaceVariant       = Color(0xFF3D5870),
+    onSurfaceVariant       = Color(0xFF2A4054),
     outline                = OutlineLight,
     error                  = Color(0xFFBA1A1A),
     onError                = Color.White,

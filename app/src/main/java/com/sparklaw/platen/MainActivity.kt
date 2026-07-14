@@ -85,6 +85,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.documentfile.provider.DocumentFile
 import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
@@ -292,6 +294,9 @@ fun ScannerScreen() {
                             "Not enough storage to save the scan."
                         e is SecurityException ->
                             "Output folder access was lost. Re-select it in Settings."
+                        e is java.io.IOException &&
+                            e.message?.contains("createFile returned null") == true ->
+                            "Couldn't create the file. If saving to a cloud folder (Nextcloud, etc.), try a local folder instead."
                         e is java.io.IOException ->
                             "Couldn't save — check your output folder in Settings."
                         else -> "Couldn't save the scan. Please try again."
@@ -471,6 +476,18 @@ fun ScannerScreen() {
                     Text("Scan", style = MaterialTheme.typography.headlineSmall)
                 }
 
+                if (activeProfile.folderUri == null) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Set an output folder in Settings to start scanning.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.error,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
                 Spacer(Modifier.height(16.dp))
 
                 OutlinedButton(
@@ -491,16 +508,32 @@ fun ScannerScreen() {
                     )
                 }
 
-                val folderCaption = when {
-                    activeProfile.folderUri == null -> "Go to Settings to choose an output folder."
-                    else -> "Saving to ${activeProfile.name}"
+                val activeFolderName by produceState<String?>(
+                    initialValue = null,
+                    key1 = activeProfile.folderUri
+                ) {
+                    val uriStr = activeProfile.folderUri
+                    value = if (uriStr == null) {
+                        null
+                    } else {
+                        withContext(Dispatchers.IO) {
+                            try {
+                                DocumentFile.fromTreeUri(context, Uri.parse(uriStr))?.name
+                            } catch (e: Exception) {
+                                null
+                            }
+                        }
+                    }
                 }
-                Text(
-                    folderCaption,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
+
+                if (activeProfile.folderUri != null) {
+                    Text(
+                        "Saving to ${activeFolderName ?: "…"}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
+                }
             }
         }
     }
