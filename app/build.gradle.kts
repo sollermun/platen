@@ -22,8 +22,8 @@ android {
         applicationId = "com.sparklaw.platen"
         minSdk = 24            // ML Kit doc scanner needs 21+; 24 keeps things simple
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"  // bump versionCode on EVERY Play upload; bump versionName per release
+        versionCode = 2
+        versionName = "1.1.0"  // bump versionCode on EVERY Play upload; bump versionName per release
     }
 
     signingConfigs {
