@@ -25,7 +25,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
@@ -111,7 +110,6 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.time.LocalDateTime
-import androidx.compose.ui.focus.onFocusChanged
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -691,7 +689,7 @@ fun SettingsScreen(
             ) {
                 Text(if (profile.folderUri == null) "Choose output folder" else "Change output folder")
             }
- Text(
+            Text(
                 "Tip: pick a folder your cloud app syncs (Nextcloud, Drive, Dropbox) to upload scans automatically.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
