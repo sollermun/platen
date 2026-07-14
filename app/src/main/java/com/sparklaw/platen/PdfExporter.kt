@@ -12,8 +12,8 @@ import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
 import com.tom_roush.pdfbox.pdmodel.font.PDType1Font
 import com.tom_roush.pdfbox.pdmodel.graphics.image.LosslessFactory
 import com.tom_roush.pdfbox.pdmodel.graphics.state.RenderingMode
-import java.text.SimpleDateFormat
-import java.util.Date
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.min
@@ -55,6 +55,45 @@ internal fun providerLabel(uri: Uri): String = when {
     else -> "the sync app"
 }
 
+private val FMT_DATE     = DateTimeFormatter.ofPattern("yyyy-MM-dd",          Locale.US)
+private val FMT_TIME     = DateTimeFormatter.ofPattern("HH-mm-ss",            Locale.US)
+private val FMT_DATETIME = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss", Locale.US)
+
+private fun sanitizeFilename(name: String): String {
+    val cleaned = name
+        .replace(Regex("[:/\\\\?*\"<>|]"), "_")
+        .replace(Regex("[\\x00-\\x1F]"), "")
+        .trim()
+        .trim('.')
+    return cleaned.ifBlank { "scan" }.take(120)
+}
+
+private fun buildFilename(
+    pattern: String,
+    profileName: String,
+    now: LocalDateTime,
+    dir: androidx.documentfile.provider.DocumentFile
+): String {
+    val raw = pattern
+        .ifBlank { "{datetime}_{profile}" }
+        .replace("{date}",     now.format(FMT_DATE))
+        .replace("{time}",     now.format(FMT_TIME))
+        .replace("{datetime}", now.format(FMT_DATETIME))
+        .replace("{profile}",  profileName)
+    val base = sanitizeFilename(raw.replace("{n}", ""))
+    val candidate = "$base.pdf"
+    if (dir.findFile(candidate) == null) return base
+    for (n in 2..99) {
+        val withN = sanitizeFilename(raw.replace("{n}", n.toString()))
+        val withNCandidate = "$withN.pdf"
+        val collisionName = "$base ($n).pdf"
+        val chosen = if (raw.contains("{n}")) withNCandidate else collisionName
+        val chosenBase = chosen.removeSuffix(".pdf")
+        if (dir.findFile(chosen) == null) return chosenBase
+    }
+    return sanitizeFilename("$base ${now.format(FMT_TIME)}")
+}
+
 object PdfExporter {
     fun export(
         context: Context,
@@ -63,7 +102,9 @@ object PdfExporter {
         ocrWords: List<List<OcrWord>>? = null,
         dpi: Float = 300f,
         pageSize: PageSize = PageSize.FIT,
-        autoDetect: Boolean = false
+        autoDetect: Boolean = false,
+        filenamePattern: String = "{datetime}_{profile}",
+        profileName: String = "scan"
     ): Uri? {
         if (pages.isEmpty()) return null
         val doc = PDDocument()
@@ -120,8 +161,9 @@ object PdfExporter {
             val dir = DocumentFile.fromTreeUri(context, treeUri)
             if (dir == null || !dir.exists() || !dir.canWrite())
                 throw FolderMissingException("Folder unavailable or unwritable: $treeUri")
-            val stamp = SimpleDateFormat("yyyy.MM.dd.HH.mm.ss", Locale.US).format(Date())
-            val file = dir.createFile("application/pdf", "$stamp scan.pdf")
+            val now = LocalDateTime.now()
+            val baseName = buildFilename(filenamePattern, profileName, now, dir)
+            val file = dir.createFile("application/pdf", "$baseName.pdf")
                 ?: throw CreateFileException(treeUri, "createFile returned null for $treeUri")
             val os = context.contentResolver.openOutputStream(file.uri)
                 ?: throw WriteFailedException(treeUri, "openOutputStream returned null", java.io.IOException("null stream"))

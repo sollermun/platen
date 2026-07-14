@@ -260,6 +260,8 @@ fun ScannerScreen() {
         val useHigh = profile.quality == Quality.HIGH
         val usePageSize = profile.pageSize
         val useAutoDetect = profile.autoDetect
+        val useFilenamePattern = profile.filenamePattern
+        val useProfileName = profile.name
         scope.launch {
             val out: Uri? = try {
                 withContext(Dispatchers.Default) {
@@ -281,7 +283,7 @@ fun ScannerScreen() {
                         withContext(Dispatchers.Main) { status = "Recognizing text…" }
                         processed.map { bmp -> Ocr.recognize(bmp) }
                     } else null
-                    PdfExporter.export(context, dest, processed, words, dpi, usePageSize, useAutoDetect)
+                    PdfExporter.export(context, dest, processed, words, dpi, usePageSize, useAutoDetect, useFilenamePattern, useProfileName)
                 }
             } catch (e: Throwable) {
                 android.util.Log.e("Platen", "save failed uri=$dest profile=${activeProfile?.name}", e)
