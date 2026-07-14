@@ -250,103 +250,6 @@ fun ScannerScreen() {
         }
     }
 
-    val scannerLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartIntentSenderForResult()
-    ) { result ->
-        val profile = activeProfile ?: return@rememberLauncherForActivityResult
-        val data = GmsDocumentScanningResult.fromActivityResultIntent(result.data)
-        val pageUris = data?.pages?.map { it.imageUri } ?: emptyList()
-        val dest = profile.folderUri?.let(Uri::parse)
-        if (pageUris.isEmpty()) {
-            status = "Scan cancelled."
-            return@rememberLauncherForActivityResult
-        }
-        if (dest == null) {
-            status = "No output folder set. Choose one in this profile's settings."
-            return@rememberLauncherForActivityResult
-        }
-        if (!folderUsable(dest)) {
-            status = "Output folder access was lost. Re-select it in this profile's settings."
-            return@rememberLauncherForActivityResult
-        }
-        if (profile.filenamePattern.contains("{custom}")) {
-            pendingScan = PendingScan(pageUris, dest, profile)
-            customNameDraft = profile.lastCustomName
-            return@rememberLauncherForActivityResult
-        }
-        status = "Processing…"
-        val useGray = profile.colorMode == ColorMode.GRAYSCALE
-        val useOcr = profile.ocrEnabled
-        val useHigh = profile.quality == Quality.HIGH
-        val usePageSize = profile.pageSize
-        val useAutoDetect = profile.autoDetect
-        val useFilenamePattern = profile.filenamePattern
-        val useProfileName = profile.name
-        scope.launch {
-            val out: Uri? = try {
-                withContext(Dispatchers.Default) {
-                    val maxEdge = if (useHigh) 4000 else 3000
-                    val dpi = if (useHigh) 400f else 300f
-                    val processed = pageUris.mapNotNull { uri ->
-                        decodeFullRes(context, uri)?.let { full ->
-                            val straight = deskewBitmap(full)
-                            val cropped = detectAndCropPage(straight)
-                            val whitened = whitenResidualFill(
-                                if (cropped.isMutable) cropped
-                                else cropped.copy(Bitmap.Config.ARGB_8888, true)
-                            )
-                            val page = downsampleBitmap(whitened, maxEdge)
-                            if (useGray) Binarizer.toGrayscale(page) else Binarizer.toBitonal(page)
-                        }
-                    }
-                    val words: List<List<OcrWord>>? = if (useOcr) {
-                        withContext(Dispatchers.Main) { status = "Recognizing text…" }
-                        processed.map { bmp -> Ocr.recognize(bmp) }
-                    } else null
-                    PdfExporter.export(context, dest, processed, words, dpi, usePageSize, useAutoDetect, useFilenamePattern, useProfileName)
-                }
-            } catch (e: Throwable) {
-                android.util.Log.e("Platen", "save failed uri=$dest profile=${activeProfile?.name}", e)
-                snackbarIsError = true
-                val msg = when (e) {
-                    is PermissionLostException ->
-                        "Folder access was lost. Re-select the output folder in Settings."
-                    is FolderMissingException ->
-                        "The output folder is missing or moved. Re-select it in Settings."
-                    is CreateFileException ->
-                        "${providerLabel(e.treeUri)} wouldn't create the file. Check the folder, then try again."
-                    is WriteFailedException ->
-                        if (isLocalProvider(e.treeUri))
-                            "Couldn't write the file to the selected folder."
-                        else
-                            "Saving to ${providerLabel(e.treeUri)} failed — it may be offline. Try again, or save to a local folder and let it sync."
-                    is java.io.IOException ->
-                        if (e.message?.contains("space", true) == true ||
-                            e.message?.contains("ENOSPC", true) == true)
-                            "Not enough storage to save the scan."
-                        else
-                            "Couldn't save — check your output folder in Settings."
-                    else ->
-                        "Couldn't save the scan. Please try again."
-                }
-                snackbarHostState.showSnackbar(msg)
-                null
-            }
-            status = ""
-            if (out != null) {
-                snackbarIsError = false
-                lastSaved = out
-                val filename = out.lastPathSegment?.substringAfterLast('/') ?: "scan"
-                val result = snackbarHostState.showSnackbar(
-                    message = "Saved $filename",
-                    actionLabel = "Share",
-                    duration = SnackbarDuration.Long
-                )
-                if (result == SnackbarResult.ActionPerformed) shareLast()
-            }
-        }
-    }
-
     fun doExport(scan: PendingScan, customName: String) {
         val profile = scan.profileSnapshot
         val useGray = profile.colorMode == ColorMode.GRAYSCALE
@@ -423,6 +326,33 @@ fun ScannerScreen() {
         }
     }
 
+    val scannerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        val profile = activeProfile ?: return@rememberLauncherForActivityResult
+        val data = GmsDocumentScanningResult.fromActivityResultIntent(result.data)
+        val pageUris = data?.pages?.map { it.imageUri } ?: emptyList()
+        val dest = profile.folderUri?.let(Uri::parse)
+        if (pageUris.isEmpty()) {
+            status = "Scan cancelled."
+            return@rememberLauncherForActivityResult
+        }
+        if (dest == null) {
+            status = "No output folder set. Choose one in this profile's settings."
+            return@rememberLauncherForActivityResult
+        }
+        if (!folderUsable(dest)) {
+            status = "Output folder access was lost. Re-select it in this profile's settings."
+            return@rememberLauncherForActivityResult
+        }
+        val scan = PendingScan(pageUris, dest, profile)
+        if (profile.filenamePattern.contains("{custom}")) {
+            pendingScan = scan
+            customNameDraft = profile.lastCustomName
+            return@rememberLauncherForActivityResult
+        }
+        doExport(scan, "")
+    }
     val pending = pendingScan
     if (pending != null) {
         AlertDialog(
